@@ -1,7 +1,6 @@
 # Load standard modules
 import numpy as np
 
-import matplotlib
 from matplotlib import pyplot as plt
 
 # Load tudatpy modules
@@ -14,16 +13,22 @@ from tudatpy import constants
 from tudatpy.util import result2array
 from tudatpy.astro.time_conversion import DateTime
 
-# Load spice kernels
+##############################################################################################
+# LOAD SPICE KERNELS
+##############################################################################################
 spice.load_standard_kernels()
-spice.load_kernel("gm_Horizons.pck")
-spice.load_kernel("nep097.bsp")
-# print("Loaded kernals :",spice.get_total_count_of_kernels_loaded()) 
 
-# print("Neptune: ",spice.get_body_gravitational_parameter("Neptune"))
-# print("Triton: ",spice.get_body_gravitational_parameter("Triton"))
-
-
+kernel_paths=[
+    "pck00010.tpc",
+    "gm_de440.tpc",     
+    "nep097.bsp"
+]
+for k in kernel_paths:
+    spice.load_kernel(k)
+#spice.load_kernel("gm_Horizons.pck")
+# spice.load_kernel("pck00010.tpc")
+# spice.load_kernel("gm_de440.tpc")
+# spice.load_kernel("nep097.bsp")
 
 
 radii_km = spice.get_body_properties("Neptune","RADII",3)   # returns [Rx, Ry, Rz] in km in tudatpy >=0.8
@@ -31,7 +36,9 @@ print("Neptune radii (km):", radii_km)
 R_eq = radii_km[0] * 1e3   # meters (use equatorial as reference radius)
 
 
-# Define string names for bodies to be created from default.
+##############################################################################################
+# DEFINE BODIES
+##############################################################################################
 bodies_to_create = ["Sun", "Neptune", "Triton"]
 
 # Use "Earth"/"J2000" as global frame origin and orientation.
@@ -44,7 +51,7 @@ body_settings = environment_setup.get_default_body_settings(
     global_frame_origin,
     global_frame_orientation)
 
-# Define gravitational parameters from Jacobson 2009
+# Define spherical harmonics from Jacobson 2009
 J2 = 3408.428530717952e-6
 J4 = -33.398917590066e-6
 C20 = -J2 / np.sqrt(5.0)   # C̄20 = -J2 / sqrt(2*2+1)
@@ -79,7 +86,9 @@ bodies_to_propagate = ["Triton"]
 # Define central bodies of propagation
 central_bodies = ["Neptune"]
 
-# Define accelerations acting on Triton
+##############################################################################################
+# DEFINE ACCELERATIONS
+##############################################################################################
 accelerations_settings_Triton = dict(
     Sun=[
         propagation_setup.acceleration.point_mass_gravity()
@@ -103,8 +112,11 @@ acceleration_models = propagation_setup.create_acceleration_models(
     central_bodies)
 
 
-# Set simulation start and end epochs
-simulation_start_epoch = DateTime(2000,7, 10).epoch()
+##############################################################################################
+# SET SIMULATION START AND END
+##############################################################################################
+
+simulation_start_epoch = DateTime(2025,7, 10).epoch()
 simulation_end_epoch   = DateTime(2025, 8, 11).epoch()
 
 
@@ -149,10 +161,15 @@ propagator_settings = propagation_setup.propagator.translational(
 
 
 
-# Create simulation object and propagate the dynamics
+##############################################################################################
+# CREATE SIMULATION OBJECT AND PROPAGATE
+##############################################################################################
 dynamics_simulator = numerical_simulation.create_dynamics_simulator(
     bodies, propagator_settings
 )
+
+
+
 
 # Extract the resulting state and dependent variable history and convert it to an ndarray
 states = dynamics_simulator.propagation_results.state_history
@@ -161,8 +178,9 @@ dep_vars = dynamics_simulator.propagation_results.dependent_variable_history
 dep_vars_array = result2array(dep_vars)
 
 
-
-# Plot total acceleration as function of time
+##############################################################################################
+# PLOT
+##############################################################################################
 time_hours = (dep_vars_array[:,0] - dep_vars_array[0,0])/3600
 total_acceleration_norm = np.linalg.norm(dep_vars_array[:,1:4], axis=1)
 plt.figure(figsize=(9, 5))
