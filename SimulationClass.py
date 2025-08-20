@@ -20,7 +20,7 @@ class NeptuneSH:
     # Fully-normalized C̄20, C̄40 (from Jacobson 2009)
     Cbar20: float
     Cbar40: float
-    ref_radius_m: float
+    #ref_radius_m: float
 
 @dataclass
 class TudatOrbitRunner:
@@ -34,14 +34,14 @@ class TudatOrbitRunner:
 
     # Acceleration toggles
     use_neptune_point_mass: bool = True
-    use_sun_point_mass: bool = False
-    use_neptune_sh: bool = False
+    use_sun_point_mass: bool = True
+    use_neptune_sh: bool = True
     neptune_sh: Optional[NeptuneSH] = None
-
+    
     # (Optional) dependent variables
     save_keplerian: bool = True
     save_total_acc: bool = True
-
+    #save_rsw_frame: bool = True
     # internal
     _bodies: Optional[environment.SystemOfBodies] = None
 
@@ -58,6 +58,7 @@ class TudatOrbitRunner:
         )
         # Inject Neptune SH if requested
         if self.use_neptune_sh and self.neptune_sh is not None:
+            ref_radius_m = spice.get_body_properties("Neptune", "RADII", 3)[0]*1e3  # meters
             mu_N = spice.get_body_gravitational_parameter("Neptune")
             lmax, mmax = 4, 0
             Cbar = np.zeros((lmax+1, lmax+1))
@@ -66,7 +67,7 @@ class TudatOrbitRunner:
             Cbar[4,0] = self.neptune_sh.Cbar40
             body_settings.get("Neptune").gravity_field_settings = environment_setup.gravity_field.spherical_harmonic(
                 gravitational_parameter=mu_N,
-                reference_radius=self.neptune_sh.ref_radius_m,
+                reference_radius=ref_radius_m,
                 normalized_cosine_coefficients=Cbar,
                 normalized_sine_coefficients=Sbar,
                 associated_reference_frame="IAU_Neptune"
@@ -116,8 +117,8 @@ class TudatOrbitRunner:
         return propagation_setup.create_acceleration_models(
             self._bodies,
             acceleration_settings,
-            bodies_to_integrate=[target],
-            central_bodies=[center],
+            [scenario.target],
+            [scenario.center],
         )
 
 
@@ -136,6 +137,9 @@ class TudatOrbitRunner:
             dv.append(propagation_setup.dependent_variable.total_acceleration(scenario.target))
         if self.save_keplerian:
             dv.append(propagation_setup.dependent_variable.keplerian_state(scenario.target, scenario.center))
+       # if self.save_rsw_frame:
+       #    dv.append(propagation_setup.dependent_variable.rsw_to_inertial_rotation_matrix(scenario.target, scenario.center))
+        
         return dv
 
     def run(self, scenario: Scenario):

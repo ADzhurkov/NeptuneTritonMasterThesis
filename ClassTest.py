@@ -8,7 +8,6 @@ import SimulationClass as sim
 # If not sure, you can load then read once here or just hardcode the radius you trust.
 # radii_km = spice.get_body_radii("Neptune")  # returns [Rx,Ry,Rz] in km (if your tudatpy supports it)
 # R_eq_m = radii_km[0] * 1e3
-R_eq_m = 24764e3  # fallback: Neptune equatorial radius ~24,764 km
 
 J2 = 3408.428530717952e-6
 J4 = -33.398917590066e-6
@@ -16,8 +15,6 @@ Cbar20 = -J2 / np.sqrt(5.0)
 Cbar40 = -J4 / 3.0
 
 # 2) Build the runner
-
-
 runner = sim.TudatOrbitRunner(
     kernel_paths=[
         "pck00010.tpc",
@@ -25,15 +22,15 @@ runner = sim.TudatOrbitRunner(
         "nep097.bsp"
     ],
     use_neptune_point_mass=True,
-    use_sun_point_mass=False,
-    use_neptune_sh=True,
-    neptune_sh=sim.NeptuneSH(Cbar20, Cbar40, R_eq_m)
+    use_sun_point_mass=True,
+    use_neptune_sh=False,
+    neptune_sh=sim.NeptuneSH(Cbar20, Cbar40)
 )
 
 # 3) Scenario (TDB seconds from J2000—use your DateTime(...).epoch())
 from tudatpy.astro.time_conversion import DateTime
 sc = sim.Scenario(
-    start_epoch=DateTime(2025, 8, 10).epoch(),
+    start_epoch=DateTime(2025, 8, 1).epoch(),
     end_epoch=DateTime(2025, 8, 11).epoch(),
     step=10.0,
     target="Triton",
@@ -41,45 +38,85 @@ sc = sim.Scenario(
 )
 
 # 4) Run
-states_array, dep_vars_array = runner.run(sc)
+states_array_1, dep_vars_array_1 = runner.run(sc)
 
-# 5) Toggle experiments:
-#    - Sun on:
-runner.use_sun_point_mass = True
-states_sun, _ = runner.run(sc)
+# Don't use Neptune SH:
+runner.use_neptune_sh = False  # Use point mass instead of SH
+states_array_2, dep_vars_array_2 = runner.run(sc)
 
-#    - Neptune as point-mass only:
-runner.use_neptune_sh = False
-states_array, dep_vars_array = runner.run(sc)
-
+# Use other planets point masses:
+runner.use_neptune_sh = False  # Use SH again
+runner.use_sun_point_mass = True  # Use Sun point mass again
+runner.bodies_to_create = ["Sun", "Neptune", "Triton","Jupiter", "Saturn", "Uranus"]  # Add other planets
+states_array_3, dep_vars_array_3 = runner.run(sc)
 
 ##############################################################################################
 # PLOT
 ##############################################################################################
-time_hours = (dep_vars_array[:,0] - dep_vars_array[0,0])/3600
-total_acceleration_norm = np.linalg.norm(dep_vars_array[:,1:4], axis=1)
+# time_hours = (dep_vars_array[:,0] - dep_vars_array[0,0])/3600
+# total_acceleration_norm = np.linalg.norm(dep_vars_array[:,1:4], axis=1)
+# plt.figure(figsize=(9, 5))
+# plt.title("Total acceleration norm on Delfi-C3 over the course of propagation.")
+# plt.plot(time_hours, total_acceleration_norm)
+# plt.xlabel('Time [hr]')
+# plt.ylabel('Total Acceleration [m/s$^2$]')
+# plt.xlim([min(time_hours), max(time_hours)])
+# plt.grid()
+# plt.tight_layout()
+
+# Plot differences in relative position
 plt.figure(figsize=(9, 5))
-plt.title("Total acceleration norm on Delfi-C3 over the course of propagation.")
-plt.plot(time_hours, total_acceleration_norm)
-plt.xlabel('Time [hr]')
-plt.ylabel('Total Acceleration [m/s$^2$]')
-plt.xlim([min(time_hours), max(time_hours)])
+t = states_array_1[:, 0]
+x1 = states_array_1[:, 1] / 1e3
+y1 = states_array_1[:, 2] / 1e3
+z1 = states_array_1[:, 3] / 1e3
+x2 = states_array_2[:, 1] / 1e3
+y2 = states_array_2[:, 2] / 1e3
+z2 = states_array_2[:, 3] / 1e3
+plt.plot(t, x1 - x2, label='x difference (m)')
+plt.plot(t, y1 - y2, label='y difference (m)')
+plt.plot(t, z1 - z2, label='z difference (m)')
+plt.xlabel('Time [s]')
+plt.ylabel('Position Difference [km]')
+plt.title('Position Differences between Neptune SH and Point Mass')
+plt.legend()
+plt.grid()
+plt.tight_layout()
+
+# Plot differences in relative position
+plt.figure(figsize=(9, 5))
+t = states_array_1[:, 0]
+x1 = states_array_1[:, 1] / 1e3
+y1 = states_array_1[:, 2] / 1e3
+z1 = states_array_1[:, 3] / 1e3
+x2 = states_array_3[:, 1] / 1e3
+y2 = states_array_3[:, 2] / 1e3
+z2 = states_array_3[:, 3] / 1e3
+plt.plot(t, x1 - x2, label='x difference (m)')
+plt.plot(t, y1 - y2, label='y difference (m)')
+plt.plot(t, z1 - z2, label='z difference (m)')
+plt.xlabel('Time [s]')
+plt.ylabel('Position Difference [km]')
+plt.title('Position Differences between Default and Other Planets Point Masses')
+plt.legend()
 plt.grid()
 plt.tight_layout()
 
 
 
-# Extract and convert to km
-t   = states_array[:, 0]
-x   = states_array[:, 1] / 1e3
-y   = states_array[:, 2] / 1e3
-z   = states_array[:, 3] / 1e3
+
+# Plot 3D orbit of Triton around Neptune
+t   = states_array_1[:, 0]
+x   = states_array_1[:, 1] / 1e3
+y   = states_array_1[:, 2] / 1e3
+z   = states_array_1[:, 3] / 1e3
 
 fig = plt.figure(figsize=(8, 7))
 ax = fig.add_subplot(111, projection='3d')
 
 # Orbit path
-ax.plot(x, y, z, lw=1.5)
+ax.plot(x, y, z, lw=1.5,label='Triton Orbit Default')
+ax.plot(x2, y2, z2, lw=1.5, label='Triton Orbit More Planets')
 
 # Start and end points
 ax.scatter([x[0]], [y[0]], [z[0]], s=40, label='Start', marker='o')

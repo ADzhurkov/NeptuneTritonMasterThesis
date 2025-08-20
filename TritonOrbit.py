@@ -116,7 +116,7 @@ acceleration_models = propagation_setup.create_acceleration_models(
 # SET SIMULATION START AND END
 ##############################################################################################
 
-simulation_start_epoch = DateTime(2025,7, 10).epoch()
+simulation_start_epoch = DateTime(2025,8, 1).epoch()
 simulation_end_epoch   = DateTime(2025, 8, 11).epoch()
 
 
