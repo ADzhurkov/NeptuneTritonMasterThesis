@@ -41,7 +41,7 @@ class TudatOrbitRunner:
     # (Optional) dependent variables
     save_keplerian: bool = True
     save_total_acc: bool = True
-    #save_rsw_frame: bool = True
+    save_rsw_frame: bool = True
     # internal
     _bodies: Optional[environment.SystemOfBodies] = None
 
@@ -51,15 +51,20 @@ class TudatOrbitRunner:
             spice.load_kernel(k)
 
     def _make_body_settings(self) -> environment_setup.BodyListSettings:
+        
         body_settings = environment_setup.get_default_body_settings(
             self.bodies_to_create,
             self.global_origin,
             self.global_orientation
         )
+        
         # Inject Neptune SH if requested
         if self.use_neptune_sh and self.neptune_sh is not None:
-            ref_radius_m = spice.get_body_properties("Neptune", "RADII", 3)[0]*1e3  # meters
+            
+            radii_km = spice.get_body_properties("Neptune", "RADII", 3)  # meters
+            ref_radius_m = radii_km[0] * 1e3
             mu_N = spice.get_body_gravitational_parameter("Neptune")
+
             lmax, mmax = 4, 0
             Cbar = np.zeros((lmax+1, lmax+1))
             Sbar = np.zeros_like(Cbar)
@@ -72,6 +77,7 @@ class TudatOrbitRunner:
                 normalized_sine_coefficients=Sbar,
                 associated_reference_frame="IAU_Neptune"
             )
+
         return body_settings
 
     def build_environment(self):
@@ -90,14 +96,11 @@ class TudatOrbitRunner:
 
             # Special case: Neptune
             if body_name == "Neptune":
+                acts.setdefault("Neptune", []).append(
+                    propagation_setup.acceleration.point_mass_gravity())
                 if self.use_neptune_sh and self.neptune_sh is not None:
                     acts.setdefault("Neptune", []).append(
-                        propagation_setup.acceleration.spherical_harmonic_gravity(4, 0)
-                    )
-                elif self.use_neptune_point_mass:
-                    acts.setdefault("Neptune", []).append(
-                        propagation_setup.acceleration.point_mass_gravity()
-                    )
+                        propagation_setup.acceleration.spherical_harmonic_gravity(4, 0))
                 continue
 
             # Special case: Sun
@@ -137,10 +140,26 @@ class TudatOrbitRunner:
             dv.append(propagation_setup.dependent_variable.total_acceleration(scenario.target))
         if self.save_keplerian:
             dv.append(propagation_setup.dependent_variable.keplerian_state(scenario.target, scenario.center))
-       # if self.save_rsw_frame:
-       #    dv.append(propagation_setup.dependent_variable.rsw_to_inertial_rotation_matrix(scenario.target, scenario.center))
+        if self.save_rsw_frame:
+            dv.append(propagation_setup.dependent_variable.rsw_to_inertial_rotation_matrix(scenario.target, scenario.center))
         
         return dv
+    
+    def extract_rsw_rot_matrices(self,dep_vars_array):
+        # Column 0 is time
+        start = 1
+        if self.save_total_acc:
+            start += 3
+        if self.save_keplerian:
+            start += 6
+        if not self.save_rsw_frame:
+            raise ValueError("RSW rotation wasn't saved.")
+
+        # Take 9 columns and reshape to (N,3,3)
+        R_flat = dep_vars_array[:, start:start+9]     # (N, 9)
+        R_rsw_to_I = R_flat.reshape((-1, 3, 3))       # (N, 3, 3)
+        return R_rsw_to_I
+
 
     def run(self, scenario: Scenario):
         self.load_kernels()
@@ -170,3 +189,4 @@ class TudatOrbitRunner:
         states = result2array(sim.propagation_results.state_history)
         deps   = result2array(sim.propagation_results.dependent_variable_history)
         return states, deps
+    
