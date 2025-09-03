@@ -101,6 +101,7 @@ class TudatOrbitRunner:
                 if self.use_neptune_sh and self.neptune_sh is not None:
                     acts.setdefault("Neptune", []).append(
                         propagation_setup.acceleration.spherical_harmonic_gravity(4, 0))
+                print('accelerations: ',acts)
                 continue
 
             # Special case: Sun

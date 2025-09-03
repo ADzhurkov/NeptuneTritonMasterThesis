@@ -9,7 +9,7 @@ import SimulationClass as sim
 ##############################################################################################
 # DEFINE PROPAGATION TIME AND INTEGRATION STEP
 ##############################################################################################
-start_epoch = DateTime(2000, 8, 1).epoch()
+start_epoch = DateTime(2024, 8, 1).epoch()
 end_epoch = DateTime(2025, 8, 1).epoch()
 step_size = 60*30 # 30 minutes
 
