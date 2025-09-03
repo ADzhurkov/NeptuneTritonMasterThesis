@@ -15,9 +15,16 @@ from tudatpy.util import result2array
 from tudatpy.astro.time_conversion import DateTime
 
 # Load spice kernels
+#spice.load_standard_kernels()
+
+
+print("Before loading, kernels:", spice.get_total_count_of_kernels() if hasattr(spice, "get_total_count_of_kernels") else "unknown")
 spice.load_standard_kernels()
+print("After load_standard_kernels, kernels:", spice.get_total_count_of_kernels() if hasattr(spice, "get_total_count_of_kernels") else "unknown")
 
-
+# If available in your tudatpy, list the first few kernels:
+if hasattr(spice, "get_loaded_kernels"):
+    print("Loaded kernels sample:", spice.get_loaded_kernels()[:5])
 # Define string names for bodies to be created from default.
 bodies_to_create = ["Sun", "Earth", "Moon", "Mars", "Venus"]
 

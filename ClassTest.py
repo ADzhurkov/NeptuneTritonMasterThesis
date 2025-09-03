@@ -1,13 +1,18 @@
 # 1) Neptune radius & Jacobson J2/J4 → normalized (if you want SH)
 import numpy as np
 from matplotlib import pyplot as plt
+from tudatpy.interface import spice
+from tudatpy.astro.time_conversion import DateTime
 
-#from tudatpy.interface import spice
 import SimulationClass as sim
-# Make sure a PCK with radii is loaded by your kernel list (e.g., pck00011.tpc).
-# If not sure, you can load then read once here or just hardcode the radius you trust.
-# radii_km = spice.get_body_radii("Neptune")  # returns [Rx,Ry,Rz] in km (if your tudatpy supports it)
-# R_eq_m = radii_km[0] * 1e3
+
+##############################################################################################
+# DEFINE PROPAGATION TIME AND INTEGRATION STEP
+##############################################################################################
+start_epoch = DateTime(2000, 8, 1).epoch()
+end_epoch = DateTime(2025, 8, 1).epoch()
+step_size = 60*30 # 30 minutes
+
 
 # Define spherical harmonics from Jacobson 2009
 J2 = 3408.428530717952e-6
@@ -15,7 +20,12 @@ J4 = -33.398917590066e-6
 C20 = -J2 / np.sqrt(5.0)   # C̄20 = -J2 / sqrt(2*2+1)
 C40 = -J4 / 3.0            # C̄40 = -J4 / sqrt(2*4+1) = -J4/3
 
-# 2) Build the runner
+
+##############################################################################################
+# BUILD SIMULATION
+##############################################################################################
+
+#Define dynamical parameters and kernels
 runner = sim.TudatOrbitRunner(
     kernel_paths=[
         "pck00010.tpc",
@@ -28,22 +38,21 @@ runner = sim.TudatOrbitRunner(
     neptune_sh=sim.NeptuneSH(C20, C40)
 )
 
-# 3) Scenario (TDB seconds from J2000—use your DateTime(...).epoch())
-from tudatpy.astro.time_conversion import DateTime
+# Set Scenario values
 sc = sim.Scenario(
-    start_epoch=DateTime(2025, 8, 1).epoch(),
-    end_epoch=DateTime(2025, 8, 11).epoch(),
-    step=10.0,
+    start_epoch=start_epoch,
+    end_epoch=end_epoch,
+    step=step_size,                              
     target="Triton",
     center="Neptune"
 )
 
-# 4) Default (No SH)
+# Run Simulation without Neptune J2 and J4
 states_array_1, dep_vars_array_1 = runner.run(sc)
 
 
-# Use other planets point masses:
-runner.use_neptune_sh = True  # Use SH again
+# Run Another Simulation with Neptune J2 and J4
+runner.use_neptune_sh = True  # Use SH 
 #runner.bodies_to_create = ["Sun", "Neptune", "Triton","Jupiter", "Saturn", "Uranus"]  # Add other planets
 states_array_3, dep_vars_array_3 = runner.run(sc)
 
@@ -51,44 +60,35 @@ states_array_3, dep_vars_array_3 = runner.run(sc)
 # EXTRACT RSW MATRIX
 R_rsw_to_I = runner.extract_rsw_rot_matrices(dep_vars_array_3)
 E_I_to_rsw = np.transpose(R_rsw_to_I, axes=(0,2,1))   # inertial→RSW
-print('shape of rsw: ',np.shape(R_rsw_to_I))
+#print('shape of rsw: ',np.shape(R_rsw_to_I))
+
+##############################################################################################
+# EXTRACT SPICE CARTESIAN COORDINATES
+##############################################################################################
+
+# Time settings (e.g. one year starting Jan 1 2025)
+
+epochs = np.arange(start_epoch, end_epoch+60*5, step_size)
 
 
+spice.load_standard_kernels()
+spice.load_kernel("nep097.bsp")
 
+# Get Triton's state relative to Neptune
+states_SPICE = np.array([
+    spice.get_body_cartesian_state_at_epoch(
+        target_body_name="Triton",
+        observer_body_name="Neptune",
+        reference_frame_name="J2000",
+        aberration_corrections="NONE",
+        ephemeris_time=epoch
+    )
+    for epoch in epochs
+])
 
 ##############################################################################################
 # PLOT
 ##############################################################################################
-# time_hours = (dep_vars_array[:,0] - dep_vars_array[0,0])/3600
-# total_acceleration_norm = np.linalg.norm(dep_vars_array[:,1:4], axis=1)
-# plt.figure(figsize=(9, 5))
-# plt.title("Total acceleration norm on Delfi-C3 over the course of propagation.")
-# plt.plot(time_hours, total_acceleration_norm)
-# plt.xlabel('Time [hr]')
-# plt.ylabel('Total Acceleration [m/s$^2$]')
-# plt.xlim([min(time_hours), max(time_hours)])
-# plt.grid()
-# plt.tight_layout()
-
-# Plot differences in relative position
-# plt.figure(figsize=(9, 5))
-# t = states_array_1[:, 0]
-# x1 = states_array_1[:, 1] / 1e3
-# y1 = states_array_1[:, 2] / 1e3
-# z1 = states_array_1[:, 3] / 1e3
-# x2 = states_array_2[:, 1] / 1e3
-# y2 = states_array_2[:, 2] / 1e3
-# z2 = states_array_2[:, 3] / 1e3
-# plt.plot(t, x1 - x2, label='x difference (m)')
-# plt.plot(t, y1 - y2, label='y difference (m)')
-# plt.plot(t, z1 - z2, label='z difference (m)')
-# plt.xlabel('Time [s]')
-# plt.ylabel('Position Difference [km]')
-# plt.title('Position Differences between Neptune SH and Point Mass')
-# plt.legend()
-# plt.grid()
-# plt.tight_layout()
-
 
 #----------------------------------------------------------------
 #Extract 'inertial' (Neptune Centered) states
@@ -101,13 +101,27 @@ t2, r2, v2 = states_array_1[:,0], states_array_1[:,1:4], states_array_1[:,4:7]
 dr_I = r2 - r1
 dv_I = v2 - v1
 
+# Difference SPICE and nominal case
+dr_SPICE = states_SPICE[:,0:3] - r1
+dv_SPICE = states_SPICE[:,3:6] - v1
+print('shape dr_SPICE: ',np.shape(dr_SPICE))
+print('shape dv_SPICE: ',np.shape(dv_SPICE))
+
+
+
 dr_RSW = np.einsum('nij,nj->ni', E_I_to_rsw, dr_I)
 dv_RSW = np.einsum('nij,nj->ni', E_I_to_rsw, dv_I)
+
+dr_SPICE_RSW = np.einsum('nij,nj->ni', E_I_to_rsw, dr_SPICE)
+dv_SPICE_RSW = np.einsum('nij,nj->ni', E_I_to_rsw, dv_SPICE)
+
 
 # components: radial, along-track, cross-track
 dr_RSW_km = dr_RSW/1e3
 dv_RSW_km = dv_RSW/1e3
 
+dr_SPICE_RSW_km = dr_SPICE_RSW/1e3
+dv_SPICE_RSW_km = dv_SPICE_RSW/1e3
 
 #----------------------------------------------------------------
 # Position differences in RSW
@@ -132,6 +146,29 @@ plt.title('Relative velocity in RSW (deputy − chief)')
 plt.grid(True); plt.legend(); plt.tight_layout()
 
 
+#----------------------------------------------------------------
+# Position differences in RSW SPICE
+#----------------------------------------------------------------
+
+plt.figure(figsize=(9,5))
+plt.plot(t, dr_SPICE_RSW_km[:,0], label='ΔR')
+plt.plot(t, dr_SPICE_RSW_km[:,1], label='ΔS')
+plt.plot(t, dr_SPICE_RSW_km[:,2], label='ΔW')
+plt.xlabel('Time [s]')
+plt.ylabel('Position difference [km]')
+plt.title('Relative position in RSW SPICE (deputy − chief)')
+plt.grid(True); plt.legend(); plt.tight_layout()
+
+# Velocity differences in RSW
+plt.figure(figsize=(9,5))
+plt.plot(t, dv_SPICE_RSW_km[:,0], label='ΔṘ')
+plt.plot(t, dv_SPICE_RSW_km[:,1], label='ΔṠ')
+plt.plot(t, dv_SPICE_RSW_km[:,2], label='ΔẆ')
+plt.xlabel('Time [s]')
+plt.ylabel('Velocity difference [km/s]')
+plt.title('Relative velocity in RSW SPICE (deputy − chief)')
+plt.grid(True); plt.legend(); plt.tight_layout()
+
 
 #----------------------------------------------------------------
 # Plot 3D orbit of Triton around Neptune
@@ -151,7 +188,7 @@ ax = fig.add_subplot(111, projection='3d')
 # Orbit path
 ax.plot(x1, y1, z1, lw=1.5,label='Triton Orbit Default')
 ax.plot(x2, y2, z2, lw=1.5, label='Triton Orbit More Planets')
-
+ax.plot(states_SPICE[:,0]/1e3,states_SPICE[:,1]/1e3,states_SPICE[:,2]/1e3,lw=1.5,label='SPICE Triton Oribt')
 # Start and end points
 ax.scatter([x1[0]], [y1[0]], [z1[0]], s=40, label='Start', marker='o')
 ax.scatter([x1[-1]], [y1[-1]], [z1[-1]], s=40, label='End', marker='^')
