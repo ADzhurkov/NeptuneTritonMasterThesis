@@ -3,12 +3,12 @@ import numpy as np
 
 import matplotlib
 from matplotlib import pyplot as plt
-
+matplotlib.use("Agg")  # must be before importing pyplot or anything that selects a backend
 # Load tudatpy modules
 from tudatpy.interface import spice
 from tudatpy import numerical_simulation
 from tudatpy.numerical_simulation import environment
-from tudatpy.numerical_simulation import environment_setup, propagation_setup
+from tudatpy.numerical_simulation import environment_setup, propagation_setup, Time
 from tudatpy.astro import element_conversion
 from tudatpy import constants
 from tudatpy.util import result2array
@@ -119,7 +119,7 @@ delfi_tle = environment.Tle(
     "2 32789 098.0082 179.6267 0015321 307.2977 051.0656 14.81417433    68",
 )
 delfi_ephemeris = environment.TleEphemeris("Earth", "J2000", delfi_tle, False)
-initial_state = delfi_ephemeris.cartesian_state( simulation_start_epoch )
+initial_state = delfi_ephemeris.cartesian_state( simulation_start_epoch.to_float() )
 
 
 # Define list of dependent variables to save
@@ -154,10 +154,10 @@ dependent_variables_to_save = [
 
 
 # Create termination settings
-termination_condition = propagation_setup.propagator.time_termination(simulation_end_epoch)
+termination_condition = propagation_setup.propagator.time_termination(simulation_end_epoch.to_float())
 
 # Create numerical integrator settings
-fixed_step_size = 10.0
+fixed_step_size = Time(10.0)
 integrator_settings = propagation_setup.integrator.runge_kutta_fixed_step(
     fixed_step_size, coefficient_set=propagation_setup.integrator.CoefficientSets.rk_4
 )
@@ -182,9 +182,9 @@ dynamics_simulator = numerical_simulation.create_dynamics_simulator(
 )
 
 # Extract the resulting state and dependent variable history and convert it to an ndarray
-states = dynamics_simulator.propagation_results.state_history
+states = dynamics_simulator.propagation_results.state_history_float
 states_array = result2array(states)
-dep_vars = dynamics_simulator.propagation_results.dependent_variable_history
+dep_vars = dynamics_simulator.propagation_results.dependent_variable_history_float
 dep_vars_array = result2array(dep_vars)
 
 

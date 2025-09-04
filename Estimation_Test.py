@@ -12,8 +12,9 @@ from tudatpy import numerical_simulation
 from tudatpy.astro import time_conversion, element_conversion
 from tudatpy.numerical_simulation import environment_setup
 from tudatpy.numerical_simulation import propagation_setup
-from tudatpy.numerical_simulation import estimation, estimation_setup
+from tudatpy.numerical_simulation import estimation, estimation_setup,Time
 from tudatpy.astro.time_conversion import DateTime
+
 
 # Load spice kernels
 kernel_paths=[
@@ -54,9 +55,9 @@ for moon in moons_to_create:
     # Apply tabulated ephemeris settings
     body_settings.get(moon).ephemeris_settings = environment_setup.ephemeris.tabulated_from_existing(
     body_settings.get(moon).ephemeris_settings,
-    simulation_start_epoch,
-    simulation_end_epoch,
-    time_step=5.0 * 60.0)
+    simulation_start_epoch.to_float(),
+    simulation_end_epoch.to_float(),
+    time_step=60.0 * 30.0)
 
 print('body settings: ',body_settings)
 ### Rotational Models ### (No Need for Triton)
@@ -108,7 +109,7 @@ initial_state = spice.get_body_cartesian_state_at_epoch(
     observer_body_name     = "Neptune",
     reference_frame_name   = "J2000",
     aberration_corrections = "none",
-    ephemeris_time         = simulation_start_epoch,
+    ephemeris_time         = simulation_start_epoch.to_float(),
 )
 
 dependent_variables_to_save = [
@@ -121,10 +122,10 @@ dependent_variables_to_save = [
 
 
 # Create termination settings
-termination_condition = propagation_setup.propagator.time_termination(simulation_end_epoch)
+termination_condition = propagation_setup.propagator.time_termination(simulation_end_epoch.to_float())
 
 # Create numerical integrator settings
-fixed_step_size = 60*30 # 30 minutes
+fixed_step_size = Time(60*30) # 30 minutes
 integrator_settings = propagation_setup.integrator.runge_kutta_fixed_step(
     fixed_step_size, coefficient_set=propagation_setup.integrator.CoefficientSets.rk_4
 )
@@ -141,75 +142,312 @@ propagator_settings = propagation_setup.propagator.translational(
     output_variables=dependent_variables_to_save
 )
 
+
 ##############################################################################################
-# ORBIT ESTIMATION 
+# Create Settings Dictionary
 ##############################################################################################
 
-# Create Link Ends for the Moons
-link_ends_Triton = dict()
-link_ends_Triton[estimation_setup.observation.observed_body] = estimation_setup.observation.body_origin_link_end_id('Triton')
-link_definition_Triton = estimation_setup.observation.LinkDefinition(link_ends_Triton)
+# test_settings_env = dict()
+# test_settings_env["bodies"] = []                                        # bodies to create, default
+# test_settings_env["Triton"] = ['Durante_2019', 'noe', 'synchronous_forced']       # gravity_model, ephemeris, rotation_model
+# test_settings_env["Neptune"] = ['Lainey_2018', 'IMCCE']                  # gravity_model, rotation_model
 
-link_definition_dict = {
-    'Triton': link_ends_Triton
-}
+# test_settings_prop = dict()
+# test_settings_prop["bodies_to_propagate"] = ["Triton"]
+# test_settings_prop["central_bodies"] = ["Neptune"]
+# test_settings_prop["timestep"] = 60*30                              # fixed integration timestep
+# test_settings_prop["times"] = "180yrs"                               # where do simulation times come from, default
+# test_settings_prop["dep_vars"] = "standard" #"dissipation"                       # "dissipation"
+# test_settings_prop["dissipation"] = True
 
-# Observation Model Settings
-position_observation_settings = [estimation_setup.observation.cartesian_position(link_definition_Triton)]
+
+test_settings_obs = dict()
+test_settings_obs["mode"] = ["pos"]
+test_settings_obs["bodies"] = [("Triton", "Neptune")]                           # bodies to observe
+test_settings_obs["times"] = "180yrs"
+test_settings_obs["cadence"] = 60*60*3 # Every 3 hours
+
+# test_settings_est = dict()
+# test_settings_est['gravity'] = []
+# test_settings_est['dissipation'] = True
+
+# test_settings_plot = dict()
+# test_settings_plot["dep"] = []                                      # [lat1, lon1] --> Titan on Saturn []
+#                                                                     # [lat2, lon2] --> Saturn on Titan
+# test_settings_plot["res"] = ["rsw", "fft"]
+# test_settings_plot["other"] = ["correlations"]
+# test_settings_plot["savefigs"] = True
 
 
-# Define epochs at which the ephemerides shall be checked
-observation_times = np.arange(simulation_start_epoch, simulation_end_epoch, 3.0 * 3600)
+# test_settings_write = dict()
+# test_settings_write["res"] = ["rsw", "fft"]
+# test_settings_write["dep"] = ["a"] #, "dissipation"]  # , "dissipation"]                              # "dissipation",
+# test_settings_write["params"] = True
 
-# Create the observation simulation settings per moon
-observation_simulation_settings = list()
-for moon in link_definition_dict.keys():
-    observation_simulation_settings.append(estimation_setup.observation.tabulated_simulation_settings(
-        estimation_setup.observation.position_observable_type,
-        link_definition_dict[moon],
-        observation_times,
-        reference_link_end_type=estimation_setup.observation.observed_body))
 
-#---------------------------------------------------------------------------------------------
-# Simulated Ephemeries States of Triton
-#---------------------------------------------------------------------------------------------
+test_settings = dict()
+# test_settings["env"] = test_settings_env
+#test_settings["prop"] = test_settings_prop
+test_settings["obs"] = test_settings_obs
+# test_settings["est"] = test_settings_est
+# test_settings["write"] = test_settings_write
+# test_settings["plot"] = test_settings_plot
 
-# Create observation simulators
-ephemeris_observation_simulators = estimation_setup.create_observation_simulators(
-    position_observation_settings, bodies)
 
-# Get ephemeris states as ObservationCollection
-print('Checking ephemerides...')
-ephemeris_satellite_states = estimation.simulate_observations(
-    observation_simulation_settings,
-    ephemeris_observation_simulators,
-    bodies)
 
-# Define Estimatable Parameters
-parameters_to_estimate_settings = estimation_setup.parameter.initial_states(propagator_settings, bodies)
-parameters_to_estimate = estimation_setup.create_parameter_set(parameters_to_estimate_settings, bodies)
+
+##############################################################################################
+# PSEUDO OBSERVATIONS 
+##############################################################################################
+
+
+def make_relative_position_pseudo_observations(start_epoch,end_epoch, bodies, settings_dict: dict):
+    settings = settings_dict['obs']
+    cadence = settings['cadence']
+
+    observation_start_epoch = start_epoch.to_float()
+    observation_end_epoch = end_epoch.to_float()
+    
+    observation_times = np.arange(observation_start_epoch + 10*cadence, observation_end_epoch - 10*cadence, cadence)
+    observation_times = np.array([Time(t) for t in observation_times])
+
+    bodies_to_observe = settings["bodies"]
+    relative_position_observation_settings = []
+    observation_simulation_settings = []
+
+    for obs_bodies in bodies_to_observe:
+        link_ends = {
+            estimation_setup.observation.observed_body: estimation_setup.observation.body_origin_link_end_id(obs_bodies[0]),
+            estimation_setup.observation.observer: estimation_setup.observation.body_origin_link_end_id(obs_bodies[1])}
+        link_definition = estimation_setup.observation.LinkDefinition(link_ends)
+
+        relative_position_observation_settings.append(estimation_setup.observation.relative_cartesian_position(link_definition))
+
+        observation_simulation_settings.append(
+
+            estimation_setup.observation.tabulated_simulation_settings(
+                estimation_setup.observation.relative_position_observable_type,
+                link_definition,
+                observation_times,
+                reference_link_end_type=estimation_setup.observation.observed_body)
+        )
+
+    # Create observation simulators
+    ephemeris_observation_simulators = estimation_setup.create_observation_simulators(
+        relative_position_observation_settings, bodies)
+    # Get ephemeris states as ObservationCollection
+    print('Checking spice for position pseudo observations...')
+    simulated_pseudo_observations = estimation.simulate_observations(
+        observation_simulation_settings,
+        ephemeris_observation_simulators,
+        bodies)
+
+    return simulated_pseudo_observations, relative_position_observation_settings
+
+system_of_bodies = body_settings
+
+pseudo_observations, pseudo_observations_settings = make_relative_position_pseudo_observations(simulation_start_epoch,simulation_end_epoch, system_of_bodies, test_settings)
+
+
+
+
+########################################################################################################
+#### ESTIMATOR    ######################################################################################
+
+parameters_to_estimate_settings = estimation_setup.parameter.initial_states(propagator_settings, system_of_bodies)
+
+# if "Saturn_mass" in settings_dict['est']['gravity'] or "Saturn_GM" in settings_dict['est']['gravity']:
+#     parameters_to_estimate_settings.append(estimation_setup.parameter.gravitational_parameter(
+#         "Saturn"
+#     ))
+
+#if settings_dict['est']['dissipation']:
+#    parameters_to_estimate_settings.append(estimation_setup.parameter.inverse_tidal_quality_factor(
+#        "Saturn", "Titan"
+#    ))
+
+# if settings_dict['est']['dissipation']:
+#     parameters_to_estimate_settings.append(estimation_setup.parameter.direct_tidal_dissipation_time_lag(
+#         "Saturn", "Titan"
+#     ))
+
+parameters_to_estimate = estimation_setup.create_parameter_set(parameters_to_estimate_settings,
+                                                                system_of_bodies,
+                                                                propagator_settings)
+
 original_parameter_vector = parameters_to_estimate.parameter_vector
 
-##############################################################################################
-# PERFORM ESTIMATION
-##############################################################################################
-
-
 print('Running propagation...')
-with util.redirect_std():
-    estimator = numerical_simulation.Estimator(bodies, parameters_to_estimate,
-                                               position_observation_settings, propagator_settings)
+estimator = numerical_simulation.Estimator(system_of_bodies, parameters_to_estimate,
+                                            pseudo_observations_settings, propagator_settings)
+
+convergence_settings = estimation.estimation_convergence_checker(maximum_iterations=5)
 
 # Create input object for the estimation
-estimation_input = estimation.EstimationInput(ephemeris_satellite_states)
+estimation_input = estimation.EstimationInput(observations_and_times=pseudo_observations,
+                                                convergence_checker=convergence_settings)
 # Set methodological options
 estimation_input.define_estimation_settings(save_state_history_per_iteration=True)
+
 # Perform the estimation
 print('Performing the estimation...')
 print(f'Original initial states: {original_parameter_vector}')
 
-with util.redirect_std(redirect_out=False):
-    estimation_output = estimator.perform_estimation(estimation_input)
-initial_states_updated = parameters_to_estimate.parameter_vector
-print('Done with the estimation...')
-print(f'Updated initial states: {initial_states_updated}')
+estimation_output = estimator.perform_estimation(estimation_input)
+
+
+########################################################################################################
+#### RETRIEVE INFO    ##################################################################################
+def rotate_inertial_3_to_rsw(epochs, inertial_3, state_history):
+
+    R_func = make_rsw_rotation_from_state_history(state_history, size=3)
+    rsw_coll = []
+
+    for epoch, inertial in zip(epochs, inertial_3):
+
+        R = R_func(epoch)
+        rsw = R.dot(inertial)
+        rsw_coll.append(rsw)
+
+    assert np.array(rsw_coll).shape == inertial_3.shape
+
+    return np.array(rsw_coll)
+
+def format_residual_history(residual_history, obs_times, state_history):
+    residuals_per_iteration = []
+    rsw_residuals_per_iteration = []
+
+    for i in range(residual_history.shape[1]):
+        res_i = residual_history[:, i]
+        reshaped_residuals = res_i.reshape(-1, 3)
+        residuals_per_iteration.append(np.hstack([np.array(obs_times).reshape(-1, 1), reshaped_residuals]))
+
+        rsw_residuals = rotate_inertial_3_to_rsw(np.array(obs_times).reshape(-1, 1),
+                                                 reshaped_residuals, state_history)
+
+        rsw_residuals_per_iteration.append(np.hstack([np.array(obs_times).reshape(-1, 1), rsw_residuals]))
+
+    return residuals_per_iteration, rsw_residuals_per_iteration
+
+
+
+
+
+state_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.state_history_float
+state_history_array = util.result2array(state_history)
+
+residuals_j2000, residuals_rsw = format_residual_history(estimation_output.residual_history,
+                                                            pseudo_observations.get_concatenated_float_observation_times(),
+                                                            state_history)
+
+dep_vars_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.dependent_variable_history_float
+dep_vars_array = util.result2array(dep_vars_history)
+
+print('residuals: ',residuals_rsw)
+
+# flyby_data_dict = {
+
+#     "ca_epoch": mid.to_float(),
+#     "residuals_j2000": residuals_j2000,
+#     "residuals_rsw": residuals_rsw,
+#     "dep_vars_array": dep_vars_array
+# }
+
+
+# state_parameters_info, other_parameters_info = print_total_parameter_update_in_tnw(estimation_output.parameter_history)
+
+# my_figures_dict = dict()
+
+# if 'rsw' in settings_dict['plot']['res']:
+
+#     my_figures_dict['residuals_rsw'] = create_pseudo_residual_figure(flyby_data_dict=flyby_data_dict, frame='rsw')
+
+
+# if 'j2000' in settings_dict['plot']['res']:
+
+#     my_figures_dict['residuals_j2000'] = create_pseudo_residual_figure(flyby_data_dict=flyby_data_dict, frame='j2000')
+
+
+# if 'fft' in settings_dict['plot']['res']:
+
+#     my_figures_dict['residuals_fft'], fft_vals = create_fft_residual_figure(residuals_data=residuals_rsw[-1])
+
+
+# if 'correlations' in settings_dict['plot']['other']:
+#     my_figures_dict['correlations'] = create_correlations_figure(estimation_output)
+
+
+
+
+# ##############################################################################################
+# # ORBIT ESTIMATION 
+# ##############################################################################################
+
+# # Create Link Ends for the Moons
+# link_ends_Triton = dict()
+# link_ends_Triton[estimation_setup.observation.observed_body] = estimation_setup.observation.body_origin_link_end_id('Triton')
+# link_definition_Triton = estimation_setup.observation.LinkDefinition(link_ends_Triton)
+
+# link_definition_dict = {
+#     'Triton': link_ends_Triton
+# }
+
+# # Observation Model Settings
+# position_observation_settings = [estimation_setup.observation.cartesian_position(link_definition_Triton)]
+
+
+# # Define epochs at which the ephemerides shall be checked
+# observation_times = np.arange(simulation_start_epoch, simulation_end_epoch, 3.0 * 3600)
+
+# # Create the observation simulation settings per moon
+# observation_simulation_settings = list()
+# for moon in link_definition_dict.keys():
+#     observation_simulation_settings.append(estimation_setup.observation.tabulated_simulation_settings(
+#         estimation_setup.observation.position_observable_type,
+#         link_definition_dict[moon],
+#         observation_times,
+#         reference_link_end_type=estimation_setup.observation.observed_body))
+
+# #---------------------------------------------------------------------------------------------
+# # Simulated Ephemeries States of Triton
+# #---------------------------------------------------------------------------------------------
+
+# # Create observation simulators
+# ephemeris_observation_simulators = estimation_setup.create_observation_simulators(
+#     position_observation_settings, bodies)
+
+# # Get ephemeris states as ObservationCollection
+# print('Checking ephemerides...')
+# ephemeris_satellite_states = estimation.simulate_observations(
+#     observation_simulation_settings,
+#     ephemeris_observation_simulators,
+#     bodies)
+
+# # Define Estimatable Parameters
+# parameters_to_estimate_settings = estimation_setup.parameter.initial_states(propagator_settings, bodies)
+# parameters_to_estimate = estimation_setup.create_parameter_set(parameters_to_estimate_settings, bodies)
+# original_parameter_vector = parameters_to_estimate.parameter_vector
+
+# ##############################################################################################
+# # PERFORM ESTIMATION
+# ##############################################################################################
+
+
+# print('Running propagation...')
+# with util.redirect_std():
+#     estimator = numerical_simulation.Estimator(bodies, parameters_to_estimate,
+#                                                position_observation_settings, propagator_settings)
+
+# # Create input object for the estimation
+# estimation_input = estimation.EstimationInput(ephemeris_satellite_states)
+# # Set methodological options
+# estimation_input.define_estimation_settings(save_state_history_per_iteration=True)
+# # Perform the estimation
+# print('Performing the estimation...')
+# print(f'Original initial states: {original_parameter_vector}')
+
+# with util.redirect_std(redirect_out=False):
+#     estimation_output = estimator.perform_estimation(estimation_input)
+# initial_states_updated = parameters_to_estimate.parameter_vector
+# print('Done with the estimation...')
+# print(f'Updated initial states: {initial_states_updated}')
