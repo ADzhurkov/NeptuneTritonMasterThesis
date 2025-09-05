@@ -32,20 +32,47 @@ for k in kernel_paths:
 
 
 # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
-simulation_start_epoch = DateTime(2031, 7,  2).epoch()
-simulation_end_epoch   = DateTime(2035, 4, 20).epoch()
-test_DateTime = DateTime.from_epoch(simulation_start_epoch)
+simulation_start_epoch = DateTime(2025, 7,  2).epoch()
+simulation_end_epoch   = DateTime(2025, 8, 20).epoch()
+
 
 ##############################################################################################
 # CREATE ENVIRONMENT  
 ##############################################################################################
+# settings = settings_dict["env"]
+
+# saturn_gravity = settings['Saturn'][0]
+# saturn_rotation = settings['Saturn'][1]
+
+# titan_gravity = settings['Titan'][0]
+# titan_rotation = settings['Titan'][2]
+
+# titan_atmosphere = False
+
+# if len(settings['Titan']) == 4:
+#     titan_atmosphere = settings['Titan'][3]
+
+# if "moons" in list(settings):
+#     moon_gms = settings['moons'][0]
+# else:
+#     moon_gms = 'spice'
+
+# if not settings["bodies"]:
+
+#     # Define bodies in simulation
+#     bodies_to_create = [
+
+#     ]
+
+#     settings["bodies"] = bodies_to_create
+
+# else:
+#     bodies_to_create = settings["bodies"]
+
+bodies_to_create = ['Sun','Jupiter', 'Saturn','Neptune','Triton']
 
 
-# Create default body settings for selected celestial bodies
-moons_to_create = ['Triton']
-planets_to_create = ['Jupiter', 'Saturn','Neptune']
-stars_to_create = ['Sun']
-bodies_to_create = np.concatenate((moons_to_create, planets_to_create, stars_to_create))
+
 
 # Create default body settings for bodies_to_create, with 'Jupiter'/'J2000'
 # as global frame origin and orientation.
@@ -54,17 +81,23 @@ global_frame_orientation = 'ECLIPJ2000'
 body_settings = environment_setup.get_default_body_settings(
     bodies_to_create, global_frame_origin, global_frame_orientation)
 
-### Ephemeris Settings Moons ###
-for moon in moons_to_create:
-    # Apply tabulated ephemeris settings
-    body_settings.get(moon).ephemeris_settings = environment_setup.ephemeris.tabulated_from_existing(
-    body_settings.get(moon).ephemeris_settings,
-    simulation_start_epoch.to_float(),
-    simulation_end_epoch.to_float(),
-    time_step=60.0 * 30.0)
 
-print('body settings: ',body_settings)
-### Rotational Models ### (No Need for Triton)
+## Triton ########################################################################################
+
+body_settings.get("Triton").ephemeris_settings = environment_setup.ephemeris.interpolated_spice(
+    simulation_start_epoch.to_float()-100*30, simulation_end_epoch.to_float()+100*30, 60*30, global_frame_origin, global_frame_orientation)
+
+
+
+# ### Ephemeris Settings Moons ###
+# for moon in moons_to_create:
+#     # Apply tabulated ephemeris settings
+#     body_settings.get(moon).ephemeris_settings = environment_setup.ephemeris.tabulated_from_existing(
+#     body_settings.get(moon).ephemeris_settings,
+#     simulation_start_epoch.to_float(),
+#     simulation_end_epoch.to_float(),
+#     time_step=60.0 * 30.0)
+
 
 # # Create system of selected bodies
 bodies = environment_setup.create_system_of_bodies(body_settings)
@@ -103,8 +136,8 @@ acceleration_models = propagation_setup.create_acceleration_models(
 # SET SIMULATION START AND END
 ##############################################################################################
 
-simulation_start_epoch = DateTime(2032,8, 1).epoch()
-simulation_end_epoch   = DateTime(2032, 8, 11).epoch()
+simulation_start_epoch = DateTime(2025,8, 1).epoch()
+simulation_end_epoch   = DateTime(2025, 8, 11).epoch()
 
 
 # 2) Get Triton’s state w.r.t. Neptune in J2000 at your epoch (seconds TDB from J2000)
