@@ -31,6 +31,7 @@ for k in kernel_paths:
 # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
 simulation_start_epoch = DateTime(2031, 7,  2).epoch()
 simulation_end_epoch   = DateTime(2035, 4, 20).epoch()
+test_DateTime = DateTime.from_epoch(simulation_start_epoch)
 
 ##############################################################################################
 # CREATE ENVIRONMENT  
@@ -208,12 +209,12 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, bodies, se
     observation_start_epoch = start_epoch.to_float()
     observation_end_epoch = end_epoch.to_float()
     
-    observation_times = np.arange(observation_start_epoch + 10*cadence, observation_end_epoch - 10*cadence, cadence)
+    observation_times = np.arange(observation_start_epoch + cadence, observation_end_epoch - cadence, cadence)
+    print('Test')
     observation_times = np.array([Time(t) for t in observation_times])
-
+    observation_times_test = observation_times[0].to_float()
     bodies_to_observe = settings["bodies"]
     relative_position_observation_settings = []
-    observation_simulation_settings = []
 
     for obs_bodies in bodies_to_observe:
         link_ends = {
@@ -223,18 +224,17 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, bodies, se
 
         relative_position_observation_settings.append(estimation_setup.observation.relative_cartesian_position(link_definition))
 
-        observation_simulation_settings.append(
-
-            estimation_setup.observation.tabulated_simulation_settings(
+        observation_simulation_settings = [estimation_setup.observation.tabulated_simulation_settings(
                 estimation_setup.observation.relative_position_observable_type,
                 link_definition,
                 observation_times,
-                reference_link_end_type=estimation_setup.observation.observed_body)
-        )
+                reference_link_end_type=estimation_setup.observation.observed_body)]
+
 
     # Create observation simulators
     ephemeris_observation_simulators = estimation_setup.create_observation_simulators(
         relative_position_observation_settings, bodies)
+
     # Get ephemeris states as ObservationCollection
     print('Checking spice for position pseudo observations...')
     simulated_pseudo_observations = estimation.simulate_observations(
@@ -244,9 +244,9 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, bodies, se
 
     return simulated_pseudo_observations, relative_position_observation_settings
 
-system_of_bodies = body_settings
 
-pseudo_observations, pseudo_observations_settings = make_relative_position_pseudo_observations(simulation_start_epoch,simulation_end_epoch, system_of_bodies, test_settings)
+
+pseudo_observations, pseudo_observations_settings = make_relative_position_pseudo_observations(simulation_start_epoch,simulation_end_epoch, bodies, test_settings)
 
 
 
@@ -254,7 +254,7 @@ pseudo_observations, pseudo_observations_settings = make_relative_position_pseud
 ########################################################################################################
 #### ESTIMATOR    ######################################################################################
 
-parameters_to_estimate_settings = estimation_setup.parameter.initial_states(propagator_settings, system_of_bodies)
+parameters_to_estimate_settings = estimation_setup.parameter.initial_states(propagator_settings, bodies)
 
 # if "Saturn_mass" in settings_dict['est']['gravity'] or "Saturn_GM" in settings_dict['est']['gravity']:
 #     parameters_to_estimate_settings.append(estimation_setup.parameter.gravitational_parameter(
@@ -272,13 +272,13 @@ parameters_to_estimate_settings = estimation_setup.parameter.initial_states(prop
 #     ))
 
 parameters_to_estimate = estimation_setup.create_parameter_set(parameters_to_estimate_settings,
-                                                                system_of_bodies,
+                                                                bodies,
                                                                 propagator_settings)
 
 original_parameter_vector = parameters_to_estimate.parameter_vector
 
 print('Running propagation...')
-estimator = numerical_simulation.Estimator(system_of_bodies, parameters_to_estimate,
+estimator = numerical_simulation.Estimator(bodies, parameters_to_estimate,
                                             pseudo_observations_settings, propagator_settings)
 
 convergence_settings = estimation.estimation_convergence_checker(maximum_iterations=5)
