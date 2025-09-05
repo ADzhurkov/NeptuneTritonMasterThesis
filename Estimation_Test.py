@@ -19,8 +19,11 @@ from tudatpy.astro.time_conversion import DateTime
 # Load spice kernels
 kernel_paths=[
     "pck00010.tpc",
-    "gm_de440.tpc",     
-    "nep097.bsp"]
+    "gm_de440.tpc",
+    "nep097.bsp",     
+    "nep105.bsp",
+    "naif0012.tls"
+    ]
 
 spice.load_standard_kernels()
 
@@ -100,8 +103,8 @@ acceleration_models = propagation_setup.create_acceleration_models(
 # SET SIMULATION START AND END
 ##############################################################################################
 
-simulation_start_epoch = DateTime(2025,8, 1).epoch()
-simulation_end_epoch   = DateTime(2025, 8, 11).epoch()
+simulation_start_epoch = DateTime(2032,8, 1).epoch()
+simulation_end_epoch   = DateTime(2032, 8, 11).epoch()
 
 
 # 2) Get Triton’s state w.r.t. Neptune in J2000 at your epoch (seconds TDB from J2000)
@@ -118,6 +121,7 @@ dependent_variables_to_save = [
     propagation_setup.dependent_variable.keplerian_state("Triton", "Neptune"),
     propagation_setup.dependent_variable.latitude("Triton", "Neptune"),
     propagation_setup.dependent_variable.longitude("Triton", "Neptune"),
+    propagation_setup.dependent_variable.rsw_to_inertial_rotation_matrix("Triton", "Neptune")
 
 ]
 
@@ -322,10 +326,10 @@ def format_residual_history(residual_history, obs_times, state_history):
         reshaped_residuals = res_i.reshape(-1, 3)
         residuals_per_iteration.append(np.hstack([np.array(obs_times).reshape(-1, 1), reshaped_residuals]))
 
-        rsw_residuals = rotate_inertial_3_to_rsw(np.array(obs_times).reshape(-1, 1),
-                                                 reshaped_residuals, state_history)
+        # rsw_residuals = rotate_inertial_3_to_rsw(np.array(obs_times).reshape(-1, 1),
+        #                                          reshaped_residuals, state_history)
 
-        rsw_residuals_per_iteration.append(np.hstack([np.array(obs_times).reshape(-1, 1), rsw_residuals]))
+        # rsw_residuals_per_iteration.append(np.hstack([np.array(obs_times).reshape(-1, 1), rsw_residuals]))
 
     return residuals_per_iteration, rsw_residuals_per_iteration
 
@@ -343,7 +347,7 @@ residuals_j2000, residuals_rsw = format_residual_history(estimation_output.resid
 dep_vars_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.dependent_variable_history_float
 dep_vars_array = util.result2array(dep_vars_history)
 
-print('residuals: ',residuals_rsw)
+print('residuals: ',residuals_j2000)
 
 # flyby_data_dict = {
 
