@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 import matplotlib.dates as mdates
 
 # tudatpy imports
-from tudatpy import util
+from tudatpy import util,math
 from tudatpy import constants
 from tudatpy.interface import spice
 from tudatpy import numerical_simulation
@@ -15,7 +15,7 @@ from tudatpy.numerical_simulation import propagation_setup
 from tudatpy.numerical_simulation import estimation, estimation_setup,Time
 from tudatpy.astro.time_conversion import DateTime
 
-
+from tudatpy.astro import frame_conversion
 # Load spice kernels
 kernel_paths=[
     "pck00010.tpc",
@@ -77,7 +77,7 @@ bodies_to_create = ['Sun','Jupiter', 'Saturn','Neptune','Triton']
 # Create default body settings for bodies_to_create, with 'Jupiter'/'J2000'
 # as global frame origin and orientation.
 global_frame_origin = 'Neptune'
-global_frame_orientation = 'ECLIPJ2000'
+global_frame_orientation = 'J2000'
 body_settings = environment_setup.get_default_body_settings(
     bodies_to_create, global_frame_origin, global_frame_orientation)
 
@@ -85,7 +85,8 @@ body_settings = environment_setup.get_default_body_settings(
 ## Triton ########################################################################################
 
 body_settings.get("Triton").ephemeris_settings = environment_setup.ephemeris.interpolated_spice(
-    simulation_start_epoch.to_float()-100*30, simulation_end_epoch.to_float()+100*30, 60*30, global_frame_origin, global_frame_orientation)
+    simulation_start_epoch.to_float()-100*30, simulation_end_epoch.to_float()+100*30, 60*8, 
+    global_frame_origin, global_frame_orientation)
 
 
 
@@ -111,12 +112,12 @@ bodies_to_propagate = ['Triton']
 central_bodies = ['Neptune']
 accelerations_settings_Triton = dict()
 accelerations_settings_Triton = {
-    'Sun': [propagation_setup.acceleration.point_mass_gravity()],
+    #'Sun': [propagation_setup.acceleration.point_mass_gravity()],
     'Neptune': [
         propagation_setup.acceleration.point_mass_gravity(),
         #propagation_setup.acceleration.spherical_harmonic_gravity(4, 0)
     ],
-    'Saturn': [propagation_setup.acceleration.point_mass_gravity()]
+    #'Saturn': [propagation_setup.acceleration.point_mass_gravity()]
 }
 
 # Create global accelerations settings dictionary.
@@ -150,12 +151,12 @@ initial_state = spice.get_body_cartesian_state_at_epoch(
 )
 
 dependent_variables_to_save = [
-    propagation_setup.dependent_variable.total_acceleration("Triton"),
+    propagation_setup.dependent_variable.rsw_to_inertial_rotation_matrix("Triton", "Neptune"),
+    #propagation_setup.dependent_variable.total_acceleration("Triton"),
     propagation_setup.dependent_variable.keplerian_state("Triton", "Neptune"),
     propagation_setup.dependent_variable.latitude("Triton", "Neptune"),
     propagation_setup.dependent_variable.longitude("Triton", "Neptune"),
-    propagation_setup.dependent_variable.rsw_to_inertial_rotation_matrix("Triton", "Neptune")
-
+    
 ]
 
 
@@ -279,7 +280,7 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, bodies, se
         observation_simulation_settings,
         ephemeris_observation_simulators,
         bodies)
-    print("Test")
+    #print("Test")
     return simulated_pseudo_observations, relative_position_observation_settings
 
 
@@ -331,6 +332,7 @@ estimation_input.define_estimation_settings(save_state_history_per_iteration=Tru
 print('Performing the estimation...')
 print(f'Original initial states: {original_parameter_vector}')
 
+
 estimation_output = estimator.perform_estimation(estimation_input)
 
 
@@ -371,14 +373,14 @@ def format_residual_history(residual_history, obs_times, state_history):
 
 
 
-state_history = estimation_output.simulation_results_per_iteration[2].dynamics_results.state_history_float
+state_history = estimation_output.simulation_results_per_iteration[0].dynamics_results.state_history_float
 state_history_array = util.result2array(state_history)
 
 residuals_j2000, residuals_rsw = format_residual_history(estimation_output.residual_history,
                                                             pseudo_observations.get_concatenated_float_observation_times(),
                                                             state_history)
 
-dep_vars_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.dependent_variable_history_float
+dep_vars_history = estimation_output.simulation_results_per_iteration[0].dynamics_results.dependent_variable_history_float
 dep_vars_array = util.result2array(dep_vars_history)
 
 #print('residuals: ',residuals_j2000)
@@ -388,41 +390,20 @@ dep_vars_array = util.result2array(dep_vars_history)
 
 ########################################################################################################
 #### RETRIEVE RSW RESIDUALS   ##########################################################################
-time_format = []
-state_history_time =state_history_array[:,0]
-
-for t in state_history_time:
-    t = DateTime.from_epoch(Time(t)).to_python_datetime()
-    time_format.append(t)
-
-
-r_km = state_history_array[:,1:4]/1e3
-# plt.figure(figsize=(9,5))
-
-# plt.plot(time_format,r_km[:,0], label='ΔS')
-# plt.plot(time_format,r_km[:,1], label='ΔS')
-# plt.plot(time_format,r_km[:,2], label='ΔW')
-# plt.xlabel('Time [s]')
-# plt.ylabel('Position difference [km]')
-# plt.title('Relative position in RSW (deputy − chief)')
-# plt.grid(True); plt.legend(); plt.tight_layout()
+def extract_rsw_rot_matrices(R_flat):
+    # Take 9 columns and reshape to (N,3,3)
+    #R_flat = dep_vars_array[:, start:start+9]     # (N, 9)
+    R_rsw_to_I = R_flat.reshape((-1, 3, 3))       # (N, 3, 3)
+    return R_rsw_to_I
 
 
-
-fig = plt.figure(figsize=(8, 7))
-ax = fig.add_subplot(111, projection='3d')
-
-x1 = r_km[:,0]
-y1 = r_km[:,1]
-z1 = r_km[:,2]
-
-epochs = np.arange(simulation_start_epoch.to_float(), simulation_end_epoch.to_float()+60*5, test_settings_obs["cadence"] )
-
-states_observations = pseudo_observations.get_observations()[0]
-states_observations = states_observations.reshape(78,3)/1e3
-
+# EXTRACT RSW MATRIX
+R_rsw_to_I = extract_rsw_rot_matrices(dep_vars_array[:,1:10])
+R_I_to_rsw = np.transpose(R_rsw_to_I, axes=(0,2,1))   # inertial→RSW
 
 # Get Triton's state relative to Neptune
+epochs = np.arange(simulation_start_epoch.to_float(), simulation_end_epoch.to_float()+60*5, fixed_step_size.to_float() ) #test_settings_obs["cadence"]
+
 states_SPICE = np.array([
     spice.get_body_cartesian_state_at_epoch(
         target_body_name="Triton",
@@ -434,6 +415,201 @@ states_SPICE = np.array([
     for epoch in epochs
 ])
 
+state_history_time =state_history_array[:,0]
+time_format = []
+for t in state_history_time:
+    t = DateTime.from_epoch(Time(t)).to_python_datetime()
+    time_format.append(t)
+
+r_RSW = np.einsum('nij,nj->ni', R_I_to_rsw, state_history_array[:,1:4])
+v_RSW = np.einsum('nij,nj->ni', R_I_to_rsw, state_history_array[:,4:])
+
+r_SPICE_RSW = np.einsum('nij,nj->ni', R_I_to_rsw, states_SPICE[:,1:4])
+#dv_SPICE_RSW = np.einsum('nij,nj->ni', R_I_to_rsw, dv_SPICE)
+
+
+
+
+r_km = state_history_array[:,1:4]/1e3
+
+# plt.figure(figsize=(9,5))
+
+# plt.plot(time_format,r_RSW[:,0], label='ΔR')
+# plt.plot(time_format,r_RSW[:,1], label='ΔS')
+# plt.plot(time_format,r_RSW[:,2], label='ΔW')
+
+# plt.plot(time_format,r_SPICE_RSW[:,0], label='ΔR SPICE')
+# plt.plot(time_format,r_SPICE_RSW[:,1], label='ΔS SPICE')
+# plt.plot(time_format,r_SPICE_RSW[:,2], label='ΔW SPICE')
+
+
+# plt.xlabel('Time [s]')
+# plt.ylabel('Position difference [km]')
+# plt.title('Relative position in RSW (deputy − chief)')
+# plt.grid(True); plt.legend(); plt.tight_layout()
+
+
+##############################################################################################
+# RESIDUAL PLOT
+##############################################################################################
+
+def format_residual_history(residual_history, obs_times, state_history):
+    residuals_per_iteration = []
+    rsw_residuals_per_iteration = []
+
+    for i in range(residual_history.shape[1]):
+        res_i = residual_history[:, i]
+        reshaped_residuals = res_i.reshape(-1, 3)
+        residuals_per_iteration.append(np.hstack([np.array(obs_times).reshape(-1, 1), reshaped_residuals]))
+
+        rsw_residuals = rotate_inertial_3_to_rsw(np.array(obs_times).reshape(-1, 1),
+                                                 reshaped_residuals, state_history)
+
+        rsw_residuals_per_iteration.append(np.hstack([np.array(obs_times).reshape(-1, 1), rsw_residuals]))
+
+    return residuals_per_iteration, rsw_residuals_per_iteration
+
+
+
+def make_rsw_rotation_from_state_history(state_history, size=3):
+
+    if type(state_history) == dict:
+        state_history_dict = state_history
+    else:
+        state_history_dict = array_to_dict(state_history)
+
+    state_history_interpolator = math.interpolators.create_one_dimensional_vector_interpolator_from_float(
+        state_history_dict, math.interpolators.lagrange_interpolation(8))
+
+    def rsw_rotation_at_epoch(sample_epoch):
+
+        R = frame_conversion.inertial_to_rsw_rotation_matrix(state_history_interpolator.interpolate(sample_epoch))
+
+        if size == 3:
+            pass
+
+        elif size == 6:
+            R = linalg.block_diag(R, R)
+
+        else:
+            raise NotImplementedError("Stacking of rotation matrices over size 6 not implemented.")
+
+        return R
+
+    return rsw_rotation_at_epoch
+
+
+
+def rotate_inertial_3_to_rsw(epochs, inertial_3, state_history):
+
+    R_func = make_rsw_rotation_from_state_history(state_history, size=3)
+    rsw_coll = []
+
+    for epoch, inertial in zip(epochs, inertial_3):
+
+        R = R_func(epoch)
+        rsw = R.dot(inertial)
+        rsw_coll.append(rsw)
+
+    assert np.array(rsw_coll).shape == inertial_3.shape
+
+    return np.array(rsw_coll)
+
+
+def rotate_inertial_6_to_rsw(epochs, inertial_6, state_history):
+
+    R_func = make_rsw_rotation_from_state_history(state_history, size=6)
+    rsw_coll = []
+
+    for epoch, inertial in zip(epochs, inertial_6):
+
+        R = R_func(epoch)
+        rsw = R.dot(inertial)
+        rsw_coll.append(rsw)
+
+    assert np.array(rsw_coll).shape == inertial_6.shape
+
+    return np.array(rsw_coll)
+
+
+
+def array_to_dict(state_history_array):
+
+    state_history_dict = dict()
+
+    for row in state_history_array:
+
+        state_history_dict[row[0]] = row[1:7]
+
+    return state_history_dict
+
+residuals_j2000, residuals_rsw = format_residual_history(estimation_output.residual_history,
+                                                            pseudo_observations.get_concatenated_float_observation_times(),
+                                                            state_history)
+
+
+residuals_rsw_final = residuals_j2000[-1][:,1:4]
+residuals_rsw_final_time = residuals_j2000[-1][:,0]
+
+residuals_rsw_inital = residuals_j2000[0][:,1:4]
+residuals_rsw_inital_time = residuals_j2000[0][:,0]
+
+#Is residual history already in kms? 
+final_residuals = estimation_output.residual_history[:,-1]
+final_residuals_array = final_residuals.reshape(78,3)
+
+
+initial_residuals = estimation_output.residual_history[:,0]
+initial_residuals_array = final_residuals.reshape(78,3)
+
+
+plt.figure(figsize=(9,5))
+plt.plot(residuals_rsw_final_time,residuals_rsw_final[:,0], label='Δx')
+plt.plot(residuals_rsw_final_time,residuals_rsw_final[:,1], label='Δy')
+plt.plot(residuals_rsw_final_time,residuals_rsw_final[:,2], label='Δz')
+
+
+plt.plot(residuals_rsw_inital_time,residuals_rsw_inital[:,0], label='Δx',linestyle="dashed")
+plt.plot(residuals_rsw_inital_time,residuals_rsw_inital[:,1], label='Δy',linestyle="dashed")
+plt.plot(residuals_rsw_inital_time,residuals_rsw_inital[:,2], label='Δz',linestyle="dashed")
+
+
+# plt.plot(residuals_rsw_final_time,final_residuals_array[:,0], label='Δx',linestyle="dashed")
+# plt.plot(residuals_rsw_final_time,final_residuals_array[:,1], label='Δy',linestyle="dashed")
+# plt.plot(residuals_rsw_final_time,final_residuals_array[:,2], label='Δz',linestyle="dashed")
+
+# plt.plot(residuals_rsw_final_time,initial_residuals_array[:,0], label='Δx inital',linestyle="dashed")
+# plt.plot(residuals_rsw_final_time,initial_residuals_array[:,1], label='Δy initial',linestyle="dashed")
+
+# plt.plot(residuals_rsw_final_time,initial_residuals_array[:,2], label='Δz initial',linestyle="dashed")
+
+
+
+# plt.plot(time_format,r_SPICE_RSW[:,0], label='ΔR SPICE')
+# plt.plot(time_format,r_SPICE_RSW[:,1], label='ΔS SPICE')
+# plt.plot(time_format,r_SPICE_RSW[:,2], label='ΔW SPICE')
+
+
+plt.xlabel('Time [s]')
+plt.ylabel('Position difference [km]')
+plt.title('Relative position residual [km]')
+plt.grid(True); plt.legend(); plt.tight_layout()
+
+
+
+
+
+##############################################################################################
+# 3D PLOT
+##############################################################################################
+states_observations = pseudo_observations.get_observations()[0]
+states_observations = states_observations.reshape(78,3)/1e3
+x1 = r_km[:,0]
+y1 = r_km[:,1]
+z1 = r_km[:,2]
+
+fig = plt.figure(figsize=(8, 7))
+ax = fig.add_subplot(111, projection='3d')
 
 # Orbit path
 ax.plot(x1, y1, z1, lw=1.5,label='Triton Orbit Fitted 2nd iteration ')
