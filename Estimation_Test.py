@@ -247,7 +247,7 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, bodies, se
     observation_end_epoch = end_epoch.to_float()
     
     observation_times = np.arange(observation_start_epoch + cadence, observation_end_epoch - cadence, cadence)
-    print('Test')
+
     observation_times = np.array([Time(t) for t in observation_times])
     observation_times_test = observation_times[0].to_float()
     bodies_to_observe = settings["bodies"]
@@ -258,6 +258,7 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, bodies, se
             estimation_setup.observation.observed_body: estimation_setup.observation.body_origin_link_end_id(obs_bodies[0]),
             estimation_setup.observation.observer: estimation_setup.observation.body_origin_link_end_id(obs_bodies[1])}
         link_definition = estimation_setup.observation.LinkDefinition(link_ends)
+
 
         relative_position_observation_settings.append(estimation_setup.observation.relative_cartesian_position(link_definition))
 
@@ -278,7 +279,7 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, bodies, se
         observation_simulation_settings,
         ephemeris_observation_simulators,
         bodies)
-
+    print("Test")
     return simulated_pseudo_observations, relative_position_observation_settings
 
 
@@ -370,7 +371,7 @@ def format_residual_history(residual_history, obs_times, state_history):
 
 
 
-state_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.state_history_float
+state_history = estimation_output.simulation_results_per_iteration[2].dynamics_results.state_history_float
 state_history_array = util.result2array(state_history)
 
 residuals_j2000, residuals_rsw = format_residual_history(estimation_output.residual_history,
@@ -380,111 +381,89 @@ residuals_j2000, residuals_rsw = format_residual_history(estimation_output.resid
 dep_vars_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.dependent_variable_history_float
 dep_vars_array = util.result2array(dep_vars_history)
 
-print('residuals: ',residuals_j2000)
-
-# flyby_data_dict = {
-
-#     "ca_epoch": mid.to_float(),
-#     "residuals_j2000": residuals_j2000,
-#     "residuals_rsw": residuals_rsw,
-#     "dep_vars_array": dep_vars_array
-# }
-
-
-# state_parameters_info, other_parameters_info = print_total_parameter_update_in_tnw(estimation_output.parameter_history)
-
-# my_figures_dict = dict()
-
-# if 'rsw' in settings_dict['plot']['res']:
-
-#     my_figures_dict['residuals_rsw'] = create_pseudo_residual_figure(flyby_data_dict=flyby_data_dict, frame='rsw')
-
-
-# if 'j2000' in settings_dict['plot']['res']:
-
-#     my_figures_dict['residuals_j2000'] = create_pseudo_residual_figure(flyby_data_dict=flyby_data_dict, frame='j2000')
-
-
-# if 'fft' in settings_dict['plot']['res']:
-
-#     my_figures_dict['residuals_fft'], fft_vals = create_fft_residual_figure(residuals_data=residuals_rsw[-1])
-
-
-# if 'correlations' in settings_dict['plot']['other']:
-#     my_figures_dict['correlations'] = create_correlations_figure(estimation_output)
+#print('residuals: ',residuals_j2000)
 
 
 
 
-# ##############################################################################################
-# # ORBIT ESTIMATION 
-# ##############################################################################################
+########################################################################################################
+#### RETRIEVE RSW RESIDUALS   ##########################################################################
+time_format = []
+state_history_time =state_history_array[:,0]
 
-# # Create Link Ends for the Moons
-# link_ends_Triton = dict()
-# link_ends_Triton[estimation_setup.observation.observed_body] = estimation_setup.observation.body_origin_link_end_id('Triton')
-# link_definition_Triton = estimation_setup.observation.LinkDefinition(link_ends_Triton)
-
-# link_definition_dict = {
-#     'Triton': link_ends_Triton
-# }
-
-# # Observation Model Settings
-# position_observation_settings = [estimation_setup.observation.cartesian_position(link_definition_Triton)]
+for t in state_history_time:
+    t = DateTime.from_epoch(Time(t)).to_python_datetime()
+    time_format.append(t)
 
 
-# # Define epochs at which the ephemerides shall be checked
-# observation_times = np.arange(simulation_start_epoch, simulation_end_epoch, 3.0 * 3600)
+r_km = state_history_array[:,1:4]/1e3
+# plt.figure(figsize=(9,5))
 
-# # Create the observation simulation settings per moon
-# observation_simulation_settings = list()
-# for moon in link_definition_dict.keys():
-#     observation_simulation_settings.append(estimation_setup.observation.tabulated_simulation_settings(
-#         estimation_setup.observation.position_observable_type,
-#         link_definition_dict[moon],
-#         observation_times,
-#         reference_link_end_type=estimation_setup.observation.observed_body))
-
-# #---------------------------------------------------------------------------------------------
-# # Simulated Ephemeries States of Triton
-# #---------------------------------------------------------------------------------------------
-
-# # Create observation simulators
-# ephemeris_observation_simulators = estimation_setup.create_observation_simulators(
-#     position_observation_settings, bodies)
-
-# # Get ephemeris states as ObservationCollection
-# print('Checking ephemerides...')
-# ephemeris_satellite_states = estimation.simulate_observations(
-#     observation_simulation_settings,
-#     ephemeris_observation_simulators,
-#     bodies)
-
-# # Define Estimatable Parameters
-# parameters_to_estimate_settings = estimation_setup.parameter.initial_states(propagator_settings, bodies)
-# parameters_to_estimate = estimation_setup.create_parameter_set(parameters_to_estimate_settings, bodies)
-# original_parameter_vector = parameters_to_estimate.parameter_vector
-
-# ##############################################################################################
-# # PERFORM ESTIMATION
-# ##############################################################################################
+# plt.plot(time_format,r_km[:,0], label='ΔS')
+# plt.plot(time_format,r_km[:,1], label='ΔS')
+# plt.plot(time_format,r_km[:,2], label='ΔW')
+# plt.xlabel('Time [s]')
+# plt.ylabel('Position difference [km]')
+# plt.title('Relative position in RSW (deputy − chief)')
+# plt.grid(True); plt.legend(); plt.tight_layout()
 
 
-# print('Running propagation...')
-# with util.redirect_std():
-#     estimator = numerical_simulation.Estimator(bodies, parameters_to_estimate,
-#                                                position_observation_settings, propagator_settings)
 
-# # Create input object for the estimation
-# estimation_input = estimation.EstimationInput(ephemeris_satellite_states)
-# # Set methodological options
-# estimation_input.define_estimation_settings(save_state_history_per_iteration=True)
-# # Perform the estimation
-# print('Performing the estimation...')
-# print(f'Original initial states: {original_parameter_vector}')
+fig = plt.figure(figsize=(8, 7))
+ax = fig.add_subplot(111, projection='3d')
 
-# with util.redirect_std(redirect_out=False):
-#     estimation_output = estimator.perform_estimation(estimation_input)
-# initial_states_updated = parameters_to_estimate.parameter_vector
-# print('Done with the estimation...')
-# print(f'Updated initial states: {initial_states_updated}')
+x1 = r_km[:,0]
+y1 = r_km[:,1]
+z1 = r_km[:,2]
+
+epochs = np.arange(simulation_start_epoch.to_float(), simulation_end_epoch.to_float()+60*5, test_settings_obs["cadence"] )
+
+states_observations = pseudo_observations.get_observations()[0]
+states_observations = states_observations.reshape(78,3)/1e3
+
+
+# Get Triton's state relative to Neptune
+states_SPICE = np.array([
+    spice.get_body_cartesian_state_at_epoch(
+        target_body_name="Triton",
+        observer_body_name="Neptune",
+        reference_frame_name="J2000",
+        aberration_corrections="NONE",
+        ephemeris_time=epoch
+    )
+    for epoch in epochs
+])
+
+
+# Orbit path
+ax.plot(x1, y1, z1, lw=1.5,label='Triton Orbit Fitted 2nd iteration ')
+#ax.plot(x2, y2, z2, lw=1.5, label='Triton Orbit More Planets')
+ax.plot(states_SPICE[:,0]/1e3,states_SPICE[:,1]/1e3,states_SPICE[:,2]/1e3,lw=1.5,label='SPICE Triton Oribt',linestyle='dashed')
+
+ax.scatter(states_observations[:,0],states_observations[:,1],states_observations[:,2],lw=1.5,label='Observations')
+# Start and end points
+ax.scatter([x1[0]], [y1[0]], [z1[0]], s=40, label='Start', marker='o')
+ax.scatter([x1[-1]], [y1[-1]], [z1[-1]], s=40, label='End', marker='^')
+
+# Neptune at origin
+ax.scatter([0], [0], [0], s=80, label='Neptune', marker='*')
+
+ax.set_xlabel('x [km]')
+ax.set_ylabel('y [km]')
+ax.set_zlabel('z [km]')
+ax.set_title('Triton orbit (Neptune-centered)')
+
+# Equal aspect ratio
+max_range = np.array([x1.max()-x1.min(), y1.max()-y1.min(), z1.max()-z1.min()]).max()
+mid_x = 0.5*(x1.max()+x1.min()); mid_y = 0.5*(y1.max()+y1.min()); mid_z = 0.5*(z1.max()+z1.min())
+ax.set_xlim(mid_x - 0.5*max_range, mid_x + 0.5*max_range)
+ax.set_ylim(mid_y - 0.5*max_range, mid_y + 0.5*max_range)
+ax.set_zlim(mid_z - 0.5*max_range, mid_z + 0.5*max_range)
+# try:
+#     ax.set_box_aspect([1,1,1])  # Matplotlib >=3.3
+# except Exception:
+#     pass
+
+ax.legend(loc='upper right')
+plt.tight_layout()
+plt.show()
