@@ -1,5 +1,7 @@
 # General imports
-import math
+#import math
+
+import os
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.dates as mdates
@@ -14,9 +16,14 @@ from tudatpy.numerical_simulation import environment_setup
 from tudatpy.numerical_simulation import propagation_setup
 from tudatpy.numerical_simulation import estimation, estimation_setup,Time
 from tudatpy.astro.time_conversion import DateTime
-
 from tudatpy.astro import frame_conversion
-# Load spice kernels
+
+import Utilities
+
+##############################################################################################
+# LOAD SPICE KERNELS
+##############################################################################################
+kernel_folder = "Kernels/"
 kernel_paths=[
     "pck00010.tpc",
     "gm_de440.tpc",
@@ -27,13 +34,20 @@ kernel_paths=[
 
 spice.load_standard_kernels()
 
+# for k in kernel_paths:
+#     spice.load_kernel(k)
+
+# Load your kernels
 for k in kernel_paths:
-    spice.load_kernel(k)
+    spice.load_kernel(os.path.join(kernel_folder, k))
 
 
 # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
 simulation_start_epoch = DateTime(2025, 7,  2).epoch()
 simulation_end_epoch   = DateTime(2025, 8, 20).epoch()
+global_frame_origin = 'Neptune'
+global_frame_orientation = 'J2000'
+
 
 
 ##############################################################################################
@@ -41,101 +55,37 @@ simulation_end_epoch   = DateTime(2025, 8, 20).epoch()
 ##############################################################################################
 # settings = settings_dict["env"]
 
-# saturn_gravity = settings['Saturn'][0]
-# saturn_rotation = settings['Saturn'][1]
+settings_env = dict()
+settings_env["bodies"] = ['Sun','Jupiter', 'Saturn','Neptune','Triton']
+settings_env["global_frame_origin"] = global_frame_origin
+settings_env["global_frame_orientation"] = global_frame_orientation
+settings_env["interpolator_triton_cadance"] = 60*8
 
-# titan_gravity = settings['Titan'][0]
-# titan_rotation = settings['Titan'][2]
+body_settings,system_of_bodies = Utilities.Create_Env(settings_env,simulation_start_epoch,simulation_end_epoch)
 
-# titan_atmosphere = False
-
-# if len(settings['Titan']) == 4:
-#     titan_atmosphere = settings['Titan'][3]
-
-# if "moons" in list(settings):
-#     moon_gms = settings['moons'][0]
-# else:
-#     moon_gms = 'spice'
-
-# if not settings["bodies"]:
-
-#     # Define bodies in simulation
-#     bodies_to_create = [
-
-#     ]
-
-#     settings["bodies"] = bodies_to_create
-
-# else:
-#     bodies_to_create = settings["bodies"]
-
-bodies_to_create = ['Sun','Jupiter', 'Saturn','Neptune','Triton']
-
-
-
-
-# Create default body settings for bodies_to_create, with 'Jupiter'/'J2000'
-# as global frame origin and orientation.
-global_frame_origin = 'Neptune'
-global_frame_orientation = 'J2000'
-body_settings = environment_setup.get_default_body_settings(
-    bodies_to_create, global_frame_origin, global_frame_orientation)
-
-
-## Triton ########################################################################################
-
-body_settings.get("Triton").ephemeris_settings = environment_setup.ephemeris.interpolated_spice(
-    simulation_start_epoch.to_float()-100*30, simulation_end_epoch.to_float()+100*30, 60*8, 
-    global_frame_origin, global_frame_orientation)
-
-
-
-# ### Ephemeris Settings Moons ###
-# for moon in moons_to_create:
-#     # Apply tabulated ephemeris settings
-#     body_settings.get(moon).ephemeris_settings = environment_setup.ephemeris.tabulated_from_existing(
-#     body_settings.get(moon).ephemeris_settings,
-#     simulation_start_epoch.to_float(),
-#     simulation_end_epoch.to_float(),
-#     time_step=60.0 * 30.0)
-
-
-# # Create system of selected bodies
-bodies = environment_setup.create_system_of_bodies(body_settings)
 
 ##############################################################################################
 # CREATE PROPAGATOR SETTINGS 
 ##############################################################################################
 
-# Define bodies that are propagated, and their central bodies of propagation
-bodies_to_propagate = ['Triton']
-central_bodies = ['Neptune']
-accelerations_settings_Triton = dict()
-accelerations_settings_Triton = {
-    'Sun': [propagation_setup.acceleration.point_mass_gravity()],
-    'Neptune': [
-        propagation_setup.acceleration.point_mass_gravity(),
-        #propagation_setup.acceleration.spherical_harmonic_gravity(4, 0)
-    ],
-    'Saturn': [propagation_setup.acceleration.point_mass_gravity()],
-    'Jupiter': [propagation_setup.acceleration.point_mass_gravity()]
-}
-
-# Create global accelerations settings dictionary.
-acceleration_settings = {"Triton": accelerations_settings_Triton}
+settings_prop = dict()
+settings_prop['bodies_to_propagate'] = ['Triton']
+settings_prop['central_bodies'] = ['Neptune']
+settings_prop['bodies_to_simulate'] = settings_env["bodies"]
+settings_prop['bodies'] = settings_env["bodies"]
+settings_prop['system_of_bodies'] = system_of_bodies
+settings_prop['use_neptune_extended_gravity'] = False
 
 
-# Create acceleration models.
-acceleration_models = propagation_setup.create_acceleration_models(
-    bodies,
-    acceleration_settings,
-    bodies_to_propagate,
-    central_bodies)
+
+acceleration_models = Utilities.Create_Propagation_Settings(settings_prop)
+
+
 
 
 
 ##############################################################################################
-# SET SIMULATION START AND END
+# SET SIMULATION START AND END, initial_state,dependend_vars, integrator,termination_codns
 ##############################################################################################
 
 simulation_start_epoch = DateTime(2025,8, 1).epoch()
