@@ -112,12 +112,13 @@ bodies_to_propagate = ['Triton']
 central_bodies = ['Neptune']
 accelerations_settings_Triton = dict()
 accelerations_settings_Triton = {
-    #'Sun': [propagation_setup.acceleration.point_mass_gravity()],
+    'Sun': [propagation_setup.acceleration.point_mass_gravity()],
     'Neptune': [
         propagation_setup.acceleration.point_mass_gravity(),
         #propagation_setup.acceleration.spherical_harmonic_gravity(4, 0)
     ],
-    #'Saturn': [propagation_setup.acceleration.point_mass_gravity()]
+    'Saturn': [propagation_setup.acceleration.point_mass_gravity()],
+    'Jupiter': [propagation_setup.acceleration.point_mass_gravity()]
 }
 
 # Create global accelerations settings dictionary.
