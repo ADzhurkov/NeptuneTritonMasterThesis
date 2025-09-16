@@ -10,7 +10,6 @@ from tudatpy.interface import spice
 def Create_Env(settings_dict,start_epoch,end_epoch):
     # Create default body settings and bodies at Neptune J2000
 
-
     global_frame_origin = settings_dict["global_frame_origin"] 
     global_frame_orientation = settings_dict["global_frame_orientation"]
     bodies_to_create = settings_dict["bodies"]
@@ -30,6 +29,7 @@ def Create_Env(settings_dict,start_epoch,end_epoch):
 
     # # Create system of selected bodies
     bodies = environment_setup.create_system_of_bodies(body_settings)
+    
     return body_settings,bodies
 
 
@@ -58,7 +58,7 @@ def Create_Acceleration_Models(settings_dict):
     # }
 
     for body_name in bodies_to_simulate:
-        if body_name == bodies_to_propagate:
+        if body_name == bodies_to_propagate[0]:
             continue  # no self-acceleration
         if body_name not in bodies:
             print("Body ",body_name,"not created in env")
@@ -97,7 +97,7 @@ def Create_Acceleration_Models(settings_dict):
         bodies_to_propagate,
         central_bodies)
 
-    return acceleration_models
+    return acceleration_models,acceleration_settings
 
 def Create_Propagator_Settings(settings_dict):
 
@@ -136,7 +136,7 @@ def Create_Propagator_Settings(settings_dict):
     # Create numerical integrator settings
     #fixed_step_size = Time(60*30) # 30 minutes
     integrator_settings = create_rkf78_integrator_settings(fixed_step_size)
-    #propagation_setup.integrator.runge_kutta_fixed_step(fixed_step_size, coefficient_set=propagation_setup.integrator.CoefficientSets.rk_4)
+    #integrator_settings = propagation_setup.integrator.runge_kutta_fixed_step(Time(fixed_step_size), coefficient_set=propagation_setup.integrator.CoefficientSets.rk_4)
 
     # Create propagation settings
     propagator_settings = propagation_setup.propagator.translational(
@@ -207,7 +207,7 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, bodies, se
     return simulated_pseudo_observations, relative_position_observation_settings
 
 
-def Create_Estimation_Input(settings_dict,system_of_bodies,propagator_settings):
+def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings):
 
     pseudo_observations_settings = settings_dict['pseudo_observations_settings']
     pseudo_observations = settings_dict['pseudo_observations']
@@ -232,4 +232,12 @@ def Create_Estimation_Input(settings_dict,system_of_bodies,propagator_settings):
     # Set methodological options
     estimation_input.define_estimation_settings(save_state_history_per_iteration=True)
 
-    return estimation_input, original_parameter_vector
+    # Perform the estimation
+    print('Performing the estimation...')
+    print(f'Original initial states: {original_parameter_vector}')
+
+    estimation_output = estimator.perform_estimation(estimation_input)
+
+
+
+    return estimation_output, original_parameter_vector

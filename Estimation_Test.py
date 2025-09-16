@@ -43,11 +43,10 @@ for k in kernel_paths:
 
 
 # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
-simulation_start_epoch = DateTime(2025, 7,  2).epoch()
-simulation_end_epoch   = DateTime(2025, 8, 20).epoch()
+simulation_start_epoch = DateTime(2025, 8,  10).epoch()
+simulation_end_epoch   = DateTime(2025, 8, 11).epoch()
 global_frame_origin = 'Neptune'
 global_frame_orientation = 'J2000'
-
 
 
 ##############################################################################################
@@ -76,12 +75,7 @@ settings_acc['bodies'] = settings_env["bodies"]
 settings_acc['system_of_bodies'] = system_of_bodies
 settings_acc['use_neptune_extended_gravity'] = False
 
-
-
-acceleration_models = Utilities.Create_Acceleration_Models(settings_acc)
-
-
-
+acceleration_models,acceleration_settings = Utilities.Create_Acceleration_Models(settings_acc)
 
 
 ##############################################################################################
@@ -119,56 +113,8 @@ settings["obs"] = settings_obs
 # PSEUDO OBSERVATIONS 
 ##############################################################################################
 
-
-# def make_relative_position_pseudo_observations(start_epoch,end_epoch, bodies, settings_dict: dict):
-#     settings = settings_dict['obs']
-#     cadence = settings['cadence']
-
-#     observation_start_epoch = start_epoch.to_float()
-#     observation_end_epoch = end_epoch.to_float()
-    
-#     observation_times = np.arange(observation_start_epoch + cadence, observation_end_epoch - cadence, cadence)
-
-#     observation_times = np.array([Time(t) for t in observation_times])
-#     observation_times_test = observation_times[0].to_float()
-#     bodies_to_observe = settings["bodies"]
-#     relative_position_observation_settings = []
-
-#     for obs_bodies in bodies_to_observe:
-#         link_ends = {
-#             estimation_setup.observation.observed_body: estimation_setup.observation.body_origin_link_end_id(obs_bodies[0]),
-#             estimation_setup.observation.observer: estimation_setup.observation.body_origin_link_end_id(obs_bodies[1])}
-#         link_definition = estimation_setup.observation.LinkDefinition(link_ends)
-
-
-#         relative_position_observation_settings.append(estimation_setup.observation.relative_cartesian_position(link_definition))
-
-#         observation_simulation_settings = [estimation_setup.observation.tabulated_simulation_settings(
-#                 estimation_setup.observation.relative_position_observable_type,
-#                 link_definition,
-#                 observation_times,
-#                 reference_link_end_type=estimation_setup.observation.observed_body)]
-
-
-#     # Create observation simulators
-#     ephemeris_observation_simulators = estimation_setup.create_observation_simulators(
-#         relative_position_observation_settings, bodies)
-
-#     # Get ephemeris states as ObservationCollection
-#     print('Checking spice for position pseudo observations...')
-#     simulated_pseudo_observations = estimation.simulate_observations(
-#         observation_simulation_settings,
-#         ephemeris_observation_simulators,
-#         bodies)
-#     #print("Test")
-#     return simulated_pseudo_observations, relative_position_observation_settings
-
-
-
 pseudo_observations, pseudo_observations_settings = Utilities.make_relative_position_pseudo_observations(
     simulation_start_epoch,simulation_end_epoch, system_of_bodies, settings)
-
-
 
 
 ########################################################################################################
@@ -179,41 +125,11 @@ settings_est['pseudo_observations_settings'] = pseudo_observations_settings
 settings_est['pseudo_observations'] = pseudo_observations
 
 
-#estimation_input, original_parameter_vector = Utilities.Create_Estimation_Input(settings_est,system_of_bodies,propagator_settings)
+estimation_output, original_parameter_vector= Utilities.Create_Estimation_Output(settings_est,system_of_bodies,propagator_settings)
 
 
 
-# pseudo_observations_settings = settings_est['pseudo_observations_settings']
-# pseudo_observations = settings_est['pseudo_observations']
-
-parameters_to_estimate_settings = estimation_setup.parameter.initial_states(propagator_settings, system_of_bodies)
-
-parameters_to_estimate = estimation_setup.create_parameter_set(parameters_to_estimate_settings,
-                                                                system_of_bodies,
-                                                                propagator_settings)
-
-original_parameter_vector = parameters_to_estimate.parameter_vector
-
-print('Running propagation...')
-
-estimator = numerical_simulation.Estimator(system_of_bodies, parameters_to_estimate,
-                                            pseudo_observations_settings, propagator_settings)
-convergence_settings = estimation.estimation_convergence_checker(maximum_iterations=5)
-
-# Create input object for the estimation
-estimation_input = estimation.EstimationInput(observations_and_times=pseudo_observations,
-                                                convergence_checker=convergence_settings)
-
-# Set methodological options
-estimation_input.define_estimation_settings(save_state_history_per_iteration=True)
-
-# Perform the estimation
-print('Performing the estimation...')
-print(f'Original initial states: {original_parameter_vector}')
-
-estimation_output = estimator.perform_estimation(estimation_input)
-
-
+print("END OF ESTIMATION")
 ########################################################################################################
 #### RETRIEVE INFO    ##################################################################################
 def rotate_inertial_3_to_rsw(epochs, inertial_3, state_history):
