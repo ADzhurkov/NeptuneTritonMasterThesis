@@ -1,0 +1,45 @@
+env:
+  start_epoch: 805420800.0
+  end_epoch: 808185600.0
+  bodies: &id001
+  - Sun
+  - Jupiter
+  - Saturn
+  - Neptune
+  - Triton
+  global_frame_origin: Neptune
+  global_frame_orientation: J2000
+  interpolator_triton_cadance: 480
+acc:
+  bodies_to_propagate: &id002
+  - Triton
+  central_bodies: &id003
+  - Neptune
+  bodies_to_simulate: *id001
+  bodies: *id001
+  use_neptune_extended_gravity: false
+  accelerations_cfg:
+    target: Triton
+    accelerations:
+      Sun:
+      - type: point_mass_gravity
+      Jupiter:
+      - type: point_mass_gravity
+      Saturn:
+      - type: point_mass_gravity
+      Neptune:
+      - type: point_mass_gravity
+prop:
+  start_epoch: 805420800.0
+  end_epoch: 808185600.0
+  bodies_to_propagate: *id002
+  central_bodies: *id003
+  global_frame_orientation: J2000
+  fixed_step_size: 1800
+obs:
+  mode:
+  - pos
+  bodies:
+  - - Triton
+    - Neptune
+  cadence: 10800

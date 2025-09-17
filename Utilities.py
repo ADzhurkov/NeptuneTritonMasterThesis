@@ -1,4 +1,5 @@
 import numpy as np
+import yaml
 
 from tudatpy import numerical_simulation
 from tudatpy.numerical_simulation import environment_setup
@@ -7,9 +8,10 @@ from tudatpy.numerical_simulation import estimation, estimation_setup,Time
 
 from tudatpy.interface import spice
 
-def Create_Env(settings_dict,start_epoch,end_epoch):
+def Create_Env(settings_dict):
     # Create default body settings and bodies at Neptune J2000
-
+    start_epoch = settings_dict["start_epoch"]
+    end_epoch = settings_dict["end_epoch"]
     global_frame_origin = settings_dict["global_frame_origin"] 
     global_frame_orientation = settings_dict["global_frame_orientation"]
     bodies_to_create = settings_dict["bodies"]
@@ -23,7 +25,7 @@ def Create_Env(settings_dict,start_epoch,end_epoch):
     ## Triton ########################################################################################
 
     body_settings.get("Triton").ephemeris_settings = environment_setup.ephemeris.interpolated_spice(
-        start_epoch.to_float()-100*30, end_epoch.to_float()+100*30, interpolator_triton_cadance, 
+        start_epoch-100*30, end_epoch+100*30, interpolator_triton_cadance, 
         global_frame_origin, global_frame_orientation)
 
 
@@ -33,29 +35,21 @@ def Create_Env(settings_dict,start_epoch,end_epoch):
     return body_settings,bodies
 
 
-def Create_Acceleration_Models(settings_dict):
+def Create_Acceleration_Models(settings_dict,system_of_bodies):
 
     # Define bodies that are propagated, and their central bodies of propagation
     bodies_to_propagate = settings_dict['bodies_to_propagate']
     central_bodies = settings_dict['central_bodies']
     bodies_to_simulate = settings_dict['bodies_to_simulate']
     bodies = settings_dict['bodies']
-    system_of_bodies = settings_dict['system_of_bodies']
+    #system_of_bodies = settings_dict['system_of_bodies']
 
     use_neptune_extended_gravity = settings_dict['use_neptune_extended_gravity']
     
 
 
     acts: Dict[str, List] = {}
-    # acts = {
-    #     'Sun': [propagation_setup.acceleration.point_mass_gravity()],
-    #     'Neptune': [
-    #         propagation_setup.acceleration.point_mass_gravity(),
-    #         #propagation_setup.acceleration.spherical_harmonic_gravity(4, 0)
-    #     ],
-    #     'Saturn': [propagation_setup.acceleration.point_mass_gravity()],
-    #     'Jupiter': [propagation_setup.acceleration.point_mass_gravity()]
-    # }
+
 
     for body_name in bodies_to_simulate:
         if body_name == bodies_to_propagate[0]:
@@ -97,17 +91,57 @@ def Create_Acceleration_Models(settings_dict):
         bodies_to_propagate,
         central_bodies)
 
-    return acceleration_models,acceleration_settings
+    accelerations_cfg = build_acceleration_config(settings_dict)
+    return acceleration_models, accelerations_cfg
 
-def Create_Propagator_Settings(settings_dict):
+
+
+def build_acceleration_config(settings_dict):
+    bodies_to_propagate = settings_dict['bodies_to_propagate']
+    central_bodies = settings_dict['central_bodies']
+    bodies_to_simulate = settings_dict['bodies_to_simulate']
+    bodies = settings_dict['bodies']
+    target = bodies_to_propagate[0]
+    use_neptune_extended_gravity = settings_dict['use_neptune_extended_gravity']
+    
+    cfg_acts = {}  # acting_body -> list of model descriptors
+    for body_name in bodies_to_simulate:
+        if body_name == target:
+            continue  # no self-acceleration
+        if body_name not in bodies:
+            # body not present in the environment; skip
+            continue
+
+        models = []
+
+        if body_name == "Neptune":
+            models.append({"type": "point_mass_gravity"})
+            if use_neptune_extended_gravity:
+                models.append({"type": "spherical_harmonic_gravity", "degree": 4, "order": 0})
+        else:
+            # Sun, Jupiter, Saturn, etc. → default point-mass gravity
+            models.append({"type": "point_mass_gravity"})
+
+        cfg_acts[body_name] = models
+
+    # Final YAML-friendly dict (keeps Tudat's nesting: {target: {...}})
+    accel_cfg = {
+        "target": target,
+        "accelerations": cfg_acts
+    }
+    return accel_cfg
+
+
+
+def Create_Propagator_Settings(settings_dict,acceleration_models):
 
     simulation_start_epoch = settings_dict['start_epoch'] 
     simulation_end_epoch   = settings_dict['end_epoch']
-    bodies_to_propagate = settings_dict['bodies_to_propagate']
-    central_bodies = settings_dict['central_bodies']
+    bodies_to_propagate = settings_dict['bodies_to_propagate'][0]
+    central_bodies = settings_dict['central_bodies'][0]
     global_frame_orientation = settings_dict['global_frame_orientation']
     fixed_step_size = settings_dict['fixed_step_size']
-    acceleration_models = settings_dict['acceleration_models']
+    #acceleration_models = settings_dict['acceleration_models']
 
 
     # 2) Get Triton’s state w.r.t. Neptune in J2000 at your epoch (seconds TDB from J2000)
@@ -116,7 +150,7 @@ def Create_Propagator_Settings(settings_dict):
         observer_body_name     = central_bodies,
         reference_frame_name   = global_frame_orientation,
         aberration_corrections = "none",
-        ephemeris_time         = simulation_start_epoch.to_float(),
+        ephemeris_time         = simulation_start_epoch,
     )
 
     #TODO Arrange this better and make expandable
@@ -131,7 +165,7 @@ def Create_Propagator_Settings(settings_dict):
 
 
     # Create termination settings
-    termination_condition = propagation_setup.propagator.time_termination(simulation_end_epoch.to_float())
+    termination_condition = propagation_setup.propagator.time_termination(simulation_end_epoch)
 
     # Create numerical integrator settings
     #fixed_step_size = Time(60*30) # 30 minutes
@@ -144,7 +178,7 @@ def Create_Propagator_Settings(settings_dict):
         acceleration_models,
         [bodies_to_propagate],
         initial_state,
-        simulation_start_epoch,
+        Time(simulation_start_epoch),
         integrator_settings,
         termination_condition,
         output_variables=dependent_variables_to_save
@@ -163,17 +197,17 @@ def create_rkf78_integrator_settings(timestep=60):
 
 
 
-def make_relative_position_pseudo_observations(start_epoch,end_epoch, bodies, settings_dict: dict):
+def make_relative_position_pseudo_observations(start_epoch,end_epoch, system_of_bodies, settings_dict: dict):
     settings = settings_dict['obs']
     cadence = settings['cadence']
 
-    observation_start_epoch = start_epoch.to_float()
-    observation_end_epoch = end_epoch.to_float()
+    observation_start_epoch = start_epoch
+    observation_end_epoch = end_epoch
     
     observation_times = np.arange(observation_start_epoch + cadence, observation_end_epoch - cadence, cadence)
 
     observation_times = np.array([Time(t) for t in observation_times])
-    observation_times_test = observation_times[0].to_float()
+    observation_times_test = observation_times[0]
     bodies_to_observe = settings["bodies"]
     relative_position_observation_settings = []
 
@@ -195,15 +229,15 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, bodies, se
 
     # Create observation simulators
     ephemeris_observation_simulators = estimation_setup.create_observation_simulators(
-        relative_position_observation_settings, bodies)
+        relative_position_observation_settings, system_of_bodies)
 
     # Get ephemeris states as ObservationCollection
     print('Checking spice for position pseudo observations...')
     simulated_pseudo_observations = estimation.simulate_observations(
         observation_simulation_settings,
         ephemeris_observation_simulators,
-        bodies)
-    #print("Test")
+        system_of_bodies)
+
     return simulated_pseudo_observations, relative_position_observation_settings
 
 
