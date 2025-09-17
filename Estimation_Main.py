@@ -22,7 +22,7 @@ from tudatpy.astro.time_conversion import DateTime
 from tudatpy.astro import frame_conversion
 
 import ProcessingUtils
-import Utilities
+import PropFuncs
 
 matplotlib.use("PDF")  #tkagg
 
@@ -51,19 +51,19 @@ def main(settings: dict,out_dir):
     # CREATE ENVIRONMENT  
     ##############################################################################################
 
-    body_settings,system_of_bodies = Utilities.Create_Env(settings_env)
+    body_settings,system_of_bodies = PropFuncs.Create_Env(settings_env)
 
     ##############################################################################################
     # CREATE ACCELERATION MODELS  
     ##############################################################################################
 
-    acceleration_models,accelerations_cfg = Utilities.Create_Acceleration_Models(settings_acc,system_of_bodies)
+    acceleration_models,accelerations_cfg = PropFuncs.Create_Acceleration_Models(settings_acc,system_of_bodies)
 
     ##############################################################################################
     # CREATE PROPAGATOR
     ##############################################################################################
 
-    propagator_settings = Utilities.Create_Propagator_Settings(settings_prop,acceleration_models)
+    propagator_settings = PropFuncs.Create_Propagator_Settings(settings_prop,acceleration_models)
 
 
 
@@ -71,7 +71,7 @@ def main(settings: dict,out_dir):
     # CREATE PSEUDO OBSERVATIONS 
     ##############################################################################################
 
-    pseudo_observations, pseudo_observations_settings = Utilities.make_relative_position_pseudo_observations(
+    pseudo_observations, pseudo_observations_settings = PropFuncs.make_relative_position_pseudo_observations(
         simulation_start_epoch.to_float(),simulation_end_epoch.to_float(), system_of_bodies, settings)
 
 
@@ -83,7 +83,7 @@ def main(settings: dict,out_dir):
     settings_est['pseudo_observations_settings'] = pseudo_observations_settings
     settings_est['pseudo_observations'] = pseudo_observations
 
-    estimation_output, original_parameter_vector= Utilities.Create_Estimation_Output(settings_est,
+    estimation_output, original_parameter_vector= PropFuncs.Create_Estimation_Output(settings_est,
     system_of_bodies,propagator_settings)
 
     print("END OF ESTIMATION")
@@ -208,7 +208,7 @@ if __name__ == "__main__":
     settings_acc['use_neptune_extended_gravity'] = False
 
 
-    accelerations_cfg = Utilities.build_acceleration_config(settings_acc)
+    accelerations_cfg = PropFuncs.build_acceleration_config(settings_acc)
     settings_acc['accelerations_cfg'] = accelerations_cfg
     #--------------------------------------------------------------------------------------------
     # PROPAGATOR SETTINGS 
