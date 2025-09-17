@@ -23,6 +23,7 @@ from tudatpy.astro import frame_conversion
 
 import ProcessingUtils
 import PropFuncs
+import FigUtils
 
 matplotlib.use("PDF")  #tkagg
 
@@ -65,15 +66,12 @@ def main(settings: dict,out_dir):
 
     propagator_settings = PropFuncs.Create_Propagator_Settings(settings_prop,acceleration_models)
 
-
-
     ##############################################################################################
     # CREATE PSEUDO OBSERVATIONS 
     ##############################################################################################
 
     pseudo_observations, pseudo_observations_settings = PropFuncs.make_relative_position_pseudo_observations(
         simulation_start_epoch.to_float(),simulation_end_epoch.to_float(), system_of_bodies, settings)
-
 
     ##############################################################################################
     # CREATE & RUN ESTIMATOR  
@@ -87,6 +85,7 @@ def main(settings: dict,out_dir):
     system_of_bodies,propagator_settings)
 
     print("END OF ESTIMATION")
+
     ##############################################################################################
     # RETRIEVE INFO
     ##############################################################################################
@@ -96,7 +95,6 @@ def main(settings: dict,out_dir):
 
     dep_vars_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.dependent_variable_history_float
     dep_vars_array = util.result2array(dep_vars_history)
-
 
     ##############################################################################################
     # GET SPICE OBSERVATIONS
@@ -127,38 +125,17 @@ def main(settings: dict,out_dir):
                                                                 state_history)
 
 
-    residuals_j2000_final = residuals_j2000[-1][:,1:4]/1e3
-    residauls_rsw_final_time = residuals_rsw[-1][:,0]
-    residuals_rsw_final = residuals_rsw[-1][:,1:4]/1e3
-    time_format = []
-    for t in residauls_rsw_final_time:
-        t = DateTime.from_epoch(Time(t)).to_python_datetime()
-        time_format.append(t)
-
 
 
     ##############################################################################################
     # PLOTTING
     ##############################################################################################
-
-    plt.figure(figsize=(9,5))
-
-
-    plt.plot(time_format,residuals_j2000_final[:,0], label='Δx')
-    plt.plot(time_format,residuals_j2000_final[:,1], label='Δy')
-    plt.plot(time_format,residuals_j2000_final[:,2], label='Δz')
-
-    plt.plot(time_format,residuals_rsw_final[:,0], label='ΔR',linestyle='dashed')
-    plt.plot(time_format,residuals_rsw_final[:,1], label='ΔS',linestyle='dashed')
-    plt.plot(time_format,residuals_rsw_final[:,2], label='ΔW',linestyle='dashed')
-
-
-
-    plt.xlabel('Time [s]')
-    plt.ylabel('Position difference [km]')
-    plt.title('Relative position in RSW')
-    plt.grid(True); plt.legend(); plt.tight_layout()
-
+    
+    residuals_j2000_final = residuals_j2000[-1][:,1:4]/1e3
+    residauls_rsw_final_time = residuals_rsw[-1][:,0]
+    residuals_rsw_final = residuals_rsw[-1][:,1:4]/1e3
+    
+    residuals_rsw_fig = FigUtils.Residuals_RSW(residuals_j2000_final, residuals_rsw_final, residauls_rsw_final_time)
 
     #-------------------------------------------------------------------------------
 
@@ -167,7 +144,7 @@ def main(settings: dict,out_dir):
     # SAVE FIGS AND WRITE TO FILE
     ##############################################################################################
     
-    plt.savefig(out_dir / "Residuals_RSW.pdf")
+    residuals_rsw_fig.savefig(out_dir / "Residuals_RSW.pdf")
 
     with open(out_dir / "settings.yaml", "w", encoding="utf-8") as f:
         yaml.safe_dump(settings, f, sort_keys=False, allow_unicode=True)
@@ -252,49 +229,3 @@ if __name__ == "__main__":
     
     main(settings,make_timestamped_folder())
 
-
-# ##############################################################################################
-# # 3D PLOT
-# ##############################################################################################
-# states_observations = pseudo_observations.get_observations()[0]
-# states_observations_size = np.size(states_observations)/3
-# states_observations = states_observations.reshape(int(states_observations_size),3)/1e3
-# x1 = r_km[:,0]
-# y1 = r_km[:,1]
-# z1 = r_km[:,2]
-
-# fig = plt.figure(figsize=(8, 7))
-# ax = fig.add_subplot(111, projection='3d')
-
-# # Orbit path
-# ax.plot(x1, y1, z1, lw=1.5,label='Triton Orbit Fitted 2nd iteration ')
-# #ax.plot(x2, y2, z2, lw=1.5, label='Triton Orbit More Planets')
-# ax.plot(states_SPICE[:,0]/1e3,states_SPICE[:,1]/1e3,states_SPICE[:,2]/1e3,lw=1.5,label='SPICE Triton Oribt',linestyle='dashed')
-
-# ax.scatter(states_observations[:,0],states_observations[:,1],states_observations[:,2],lw=1.5,label='Observations')
-# # Start and end points
-# ax.scatter([x1[0]], [y1[0]], [z1[0]], s=40, label='Start', marker='o')
-# ax.scatter([x1[-1]], [y1[-1]], [z1[-1]], s=40, label='End', marker='^')
-
-# # Neptune at origin
-# ax.scatter([0], [0], [0], s=80, label='Neptune', marker='*')
-
-# ax.set_xlabel('x [km]')
-# ax.set_ylabel('y [km]')
-# ax.set_zlabel('z [km]')
-# ax.set_title('Triton orbit (Neptune-centered)')
-
-# # Equal aspect ratio
-# max_range = np.array([x1.max()-x1.min(), y1.max()-y1.min(), z1.max()-z1.min()]).max()
-# mid_x = 0.5*(x1.max()+x1.min()); mid_y = 0.5*(y1.max()+y1.min()); mid_z = 0.5*(z1.max()+z1.min())
-# ax.set_xlim(mid_x - 0.5*max_range, mid_x + 0.5*max_range)
-# ax.set_ylim(mid_y - 0.5*max_range, mid_y + 0.5*max_range)
-# ax.set_zlim(mid_z - 0.5*max_range, mid_z + 0.5*max_range)
-# # try:
-# #     ax.set_box_aspect([1,1,1])  # Matplotlib >=3.3
-# # except Exception:
-# #     pass
-
-# ax.legend(loc='upper right')
-# plt.tight_layout()
-# plt.show()
