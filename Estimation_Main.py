@@ -12,14 +12,21 @@ import datetime as dt
 # tudatpy imports
 from tudatpy import util,math
 from tudatpy import constants
+
 from tudatpy.interface import spice
-from tudatpy import numerical_simulation
-from tudatpy.astro import time_conversion, element_conversion
 from tudatpy.numerical_simulation import environment_setup
 from tudatpy.numerical_simulation import propagation_setup
 from tudatpy.numerical_simulation import estimation, estimation_setup,Time
+
+
+from tudatpy import numerical_simulation
+
+from tudatpy.astro import time_conversion, element_conversion,frame_conversion
 from tudatpy.astro.time_conversion import DateTime
-from tudatpy.astro import frame_conversion
+
+
+from tudatpy.data import save2txt
+
 
 import ProcessingUtils
 import PropFuncs
@@ -138,6 +145,37 @@ def main(settings: dict,out_dir):
     residuals_rsw_fig = FigUtils.Residuals_RSW(residuals_j2000_final, residuals_rsw_final, residauls_rsw_final_time)
 
     #-------------------------------------------------------------------------------
+    rms_fig = FigUtils.Residuals_RMS(residuals_j2000)
+    #-------------------------------------------------------------------------------
+    #Orbit_3D_fig = FigUtils.Plot3D(pseudo_observations,state_history_array,states_SPICE)
+    #-------------------------------------------------------------------------------
+    
+    #Get Triton Mean Motion
+    kep = dep_vars_array[:, 10:16]  # [a, e, i, ω, Ω, ν]
+    a = kep[:, 0]                   # meters
+
+    # GM values (Tudat):
+    mu_N = spice.get_body_gravitational_parameter("Neptune")
+    mu_T = spice.get_body_gravitational_parameter("Triton")
+    mu = mu_N + mu_T               
+
+    # Mean motion time series (rad/s) 
+    n_series = np.sqrt(mu / a**3)
+    n_med = np.nanmedian(n_series)  # one way to take the mean of the mean motion
+
+    f_rot_hz = 1/(n_med / (2*np.pi)) #  T (seconds)
+    
+    #--------------------------------------------------------------------------
+    #Get Different Flavors of FFTs
+    #--------------------------------------------------------------------------
+    fft_fig_Jonas = FigUtils.create_fft_residual_figure(residuals_rsw[-1],f_rot_hz)
+    
+    fft_fig_Welch = FigUtils.psd_rsw(residuals_rsw[-1],1/f_rot_hz) 
+    #fft_fig3 = FigUtils.psd_rsw(residuals_rsw[-1],1/f_rot_hz,type='ASD')
+    
+    fft_fig_PSD_no_detrend = FigUtils.periodogram_rsw(residuals_rsw[-1],1/f_rot_hz,detrend=False)                       
+    fft_fig_PSD_linear_detrend = FigUtils.periodogram_rsw(residuals_rsw[-1],1/f_rot_hz,detrend='linear') 
+    fft_fig_Spectrum = FigUtils.periodogram_rsw(residuals_rsw[-1],1/f_rot_hz,mode='spectrum')
 
 
     ##############################################################################################
@@ -145,7 +183,25 @@ def main(settings: dict,out_dir):
     ##############################################################################################
     
     residuals_rsw_fig.savefig(out_dir / "Residuals_RSW.pdf")
+    rms_fig.savefig(out_dir / "rms.pdf")
+    #Orbit_3D_fig.savefig(out_dir / "Orbit_3D.pdf")
+    fft_fig_Jonas.savefig(out_dir / "fft_Jonas.pdf")
+    fft_fig_Welch.savefig(out_dir / "fft_Welch.pdf")
+    fft_fig_PSD_no_detrend.savefig(out_dir / "fft_no_detrend.pdf")
+    fft_fig_PSD_linear_detrend.savefig(out_dir / "fft_linear_detrend.pdf")
+    fft_fig_Spectrum.savefig(out_dir / "fft_spectrum.pdf")
+    #----------------------------------------------------------------------------------------------
+    # Save residuals as numpy files
+    arr = np.stack(residuals_rsw, axis=0)   # shape (5, 254, 4)
+    np.save(out_dir / "residuals_rsw.npy", arr)
 
+    arr2 = np.stack(residuals_j2000,axis=0)
+    np.save(out_dir / "residuals_j2000.npy", arr2)
+    
+
+
+
+    #Save yaml settings file
     with open(out_dir / "settings.yaml", "w", encoding="utf-8") as f:
         yaml.safe_dump(settings, f, sort_keys=False, allow_unicode=True)
 
@@ -157,7 +213,7 @@ if __name__ == "__main__":
     # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
     simulation_start_epoch = DateTime(2025, 7,  10).epoch()
     simulation_end_epoch   = DateTime(2025, 8, 11).epoch()
-    global_frame_origin = 'Neptune'
+    global_frame_origin = 'SSB'
     global_frame_orientation = 'J2000'
 
     #--------------------------------------------------------------------------------------------
@@ -166,11 +222,11 @@ if __name__ == "__main__":
     settings_env = dict()
     settings_env["start_epoch"] = simulation_start_epoch.to_float()
     settings_env["end_epoch"] = simulation_end_epoch.to_float()
-    settings_env["bodies"] = ['Sun','Jupiter', 'Saturn','Neptune','Triton']
+    settings_env["bodies"] = ['Sun','Jupiter', 'Saturn','Neptune','Triton','Uranus','Mercury','Venus','Mars','Earth']
     settings_env["global_frame_origin"] = global_frame_origin
     settings_env["global_frame_orientation"] = global_frame_orientation
     settings_env["interpolator_triton_cadance"] = 60*8
-
+    settings_env["neptune_extended_gravity"] = "Jacobson2009"
 
     #--------------------------------------------------------------------------------------------
     # ACCELERATION SETTINGS 
@@ -182,7 +238,7 @@ if __name__ == "__main__":
     settings_acc['bodies_to_simulate'] = settings_env["bodies"]
     settings_acc['bodies'] = settings_env["bodies"]
 
-    settings_acc['use_neptune_extended_gravity'] = False
+    settings_acc['neptune_extended_gravity'] = "Jacobson2009"
 
 
     accelerations_cfg = PropFuncs.build_acceleration_config(settings_acc)
@@ -226,6 +282,17 @@ if __name__ == "__main__":
         full_path.mkdir(parents=True, exist_ok=True)
         return full_path
 
-    
-    main(settings,make_timestamped_folder())
+    main(settings,make_timestamped_folder("Results_Adjusted_Barycenter"))
 
+
+    # path = Path("/home/atn/Documents/Year 5/Thesis/Github/NeptuneTritonMasterThesis/Results_Week3_September_2025_20_Years/2025-09-22_15-47-29")
+    # residuals_rsw = np.load(path / "residuals_rsw.npy")   # works
+
+    # residuals_rsw = np.load(path /"residuals_rsw.npy")
+    # residuals_j2000 = np.load(path / "residuals_j2000.npy")
+    # residuals_rsw_fig = FigUtils.Residuals_RSW(residuals_j2000_final, residuals_rsw_final, residauls_rsw_final_time)
+
+    # residuals_rsw_fig.savefig("Residuals_RSW.pdf")
+
+
+    

@@ -8,6 +8,7 @@ from tudatpy.numerical_simulation import estimation, estimation_setup,Time
 
 from tudatpy.interface import spice
 
+
 def Create_Env(settings_dict):
     # Create default body settings and bodies at Neptune J2000
     start_epoch = settings_dict["start_epoch"]
@@ -17,6 +18,7 @@ def Create_Env(settings_dict):
     bodies_to_create = settings_dict["bodies"]
     interpolator_triton_cadance = settings_dict["interpolator_triton_cadance"]
 
+    neptune_extended_gravity = settings_dict["neptune_extended_gravity"]
 
     body_settings = environment_setup.get_default_body_settings(
         bodies_to_create, global_frame_origin, global_frame_orientation)
@@ -26,6 +28,40 @@ def Create_Env(settings_dict):
 
     body_settings.get("Triton").ephemeris_settings = environment_setup.ephemeris.interpolated_spice(
         start_epoch-100*30, end_epoch+100*30, interpolator_triton_cadance, 
+        global_frame_origin, global_frame_orientation)
+
+
+    ## Neptune 
+    if neptune_extended_gravity == "Jacobson2009":
+        # Define spherical harmonics from Jacobson 2009
+        J2 = 3408.428530717952e-6
+        J4 = -33.398917590066e-6
+        C20 = -J2 / np.sqrt(5.0)   # C̄20 = -J2 / sqrt(2*2+1)
+        C40 = -J4 / 3.0            # C̄40 = -J4 / sqrt(2*4+1) = -J4/3
+
+        # Build coefficient matrices (normalized)
+        l_max, m_max = 4, 0
+        Cbar = np.zeros((l_max+1, l_max+1))
+        Sbar = np.zeros_like(Cbar)
+        Cbar[2, 0] = C20
+        Cbar[4, 0] = C40
+
+        #Get GM and radius from SPICE
+        mu_N = spice.get_body_gravitational_parameter("Neptune")
+        radii_km = spice.get_body_properties("Neptune","RADII",3)   # returns [Rx, Ry, Rz] in km in tudatpy >=0.8
+        R_eq = radii_km[0] * 1e3   # meters (use equatorial as reference radius)
+
+
+        body_settings.get("Neptune").gravity_field_settings = environment_setup.gravity_field.spherical_harmonic(
+            gravitational_parameter=mu_N,
+            reference_radius=R_eq,
+            normalized_cosine_coefficients=Cbar,
+            normalized_sine_coefficients=Sbar,
+            associated_reference_frame="IAU_Neptune",
+        )
+
+
+    body_settings.get("Neptune").ephemeris_settings = environment_setup.ephemeris.direct_spice(
         global_frame_origin, global_frame_orientation)
 
 
@@ -44,7 +80,7 @@ def Create_Acceleration_Models(settings_dict,system_of_bodies):
     bodies = settings_dict['bodies']
     #system_of_bodies = settings_dict['system_of_bodies']
 
-    use_neptune_extended_gravity = settings_dict['use_neptune_extended_gravity']
+    neptune_extended_gravity = settings_dict['neptune_extended_gravity']
     
 
 
@@ -60,12 +96,12 @@ def Create_Acceleration_Models(settings_dict,system_of_bodies):
 
         # Special case: Neptune
         if body_name == "Neptune":
+            #if neptune_extended_gravity is "None":
             acts.setdefault("Neptune", []).append(
-                propagation_setup.acceleration.point_mass_gravity())
+            propagation_setup.acceleration.point_mass_gravity())
 
-            if use_neptune_extended_gravity is True:
-                acts.setdefault("Neptune", []).append(
-                    propagation_setup.acceleration.spherical_harmonic_gravity(4, 0))
+            if neptune_extended_gravity is not "None":
+                acts = SetExtendedGravityNeptune(neptune_extended_gravity,acts)
             continue
 
         # Special case: Sun
@@ -94,6 +130,12 @@ def Create_Acceleration_Models(settings_dict,system_of_bodies):
     accelerations_cfg = build_acceleration_config(settings_dict)
     return acceleration_models, accelerations_cfg
 
+def SetExtendedGravityNeptune(neptune_extended_gravity,acts):
+    
+    if neptune_extended_gravity == "Jacobson2009":
+        acts.setdefault("Neptune", []).append(
+        propagation_setup.acceleration.spherical_harmonic_gravity(4, 0))
+    return acts
 
 
 def build_acceleration_config(settings_dict):
@@ -102,7 +144,7 @@ def build_acceleration_config(settings_dict):
     bodies_to_simulate = settings_dict['bodies_to_simulate']
     bodies = settings_dict['bodies']
     target = bodies_to_propagate[0]
-    use_neptune_extended_gravity = settings_dict['use_neptune_extended_gravity']
+    neptune_extended_gravity = settings_dict['neptune_extended_gravity']
     
     cfg_acts = {}  # acting_body -> list of model descriptors
     for body_name in bodies_to_simulate:
@@ -116,8 +158,8 @@ def build_acceleration_config(settings_dict):
 
         if body_name == "Neptune":
             models.append({"type": "point_mass_gravity"})
-            if use_neptune_extended_gravity:
-                models.append({"type": "spherical_harmonic_gravity", "degree": 4, "order": 0})
+            if neptune_extended_gravity == "Jacobson2009":
+                models.append({"type": "spherical_harmonic_gravity_Jacobson_2009", "degree": 4, "order": 0})
         else:
             # Sun, Jupiter, Saturn, etc. → default point-mass gravity
             models.append({"type": "point_mass_gravity"})

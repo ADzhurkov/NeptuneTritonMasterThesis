@@ -2,7 +2,7 @@
 import numpy as np
 
 from matplotlib import pyplot as plt
-
+import os
 # Load tudatpy modules
 from tudatpy.interface import spice
 from tudatpy import numerical_simulation
@@ -16,20 +16,20 @@ from tudatpy.astro.time_conversion import DateTime
 ##############################################################################################
 # LOAD SPICE KERNELS
 ##############################################################################################
-spice.load_standard_kernels()
-
+kernel_folder = "Kernels/"
 kernel_paths=[
     "pck00010.tpc",
-    "gm_de440.tpc",     
-    "nep097.bsp"
-]
-for k in kernel_paths:
-    spice.load_kernel(k)
-#spice.load_kernel("gm_Horizons.pck")
-# spice.load_kernel("pck00010.tpc")
-# spice.load_kernel("gm_de440.tpc")
-# spice.load_kernel("nep097.bsp")
+    "gm_de440.tpc",
+    "nep097.bsp",     
+    "nep105.bsp",
+    "naif0012.tls"
+    ]
 
+spice.load_standard_kernels()
+
+# Load your kernels
+for k in kernel_paths:
+    spice.load_kernel(os.path.join(kernel_folder, k))
 
 radii_km = spice.get_body_properties("Neptune","RADII",3)   # returns [Rx, Ry, Rz] in km in tudatpy >=0.8
 print("Neptune radii (km):", radii_km)
