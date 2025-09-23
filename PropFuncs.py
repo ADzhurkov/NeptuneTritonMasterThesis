@@ -61,8 +61,17 @@ def Create_Env(settings_dict):
         )
 
 
-    # body_settings.get("Neptune").ephemeris_settings = environment_setup.ephemeris.direct_spice(
-    #     global_frame_origin, global_frame_orientation)
+    # set parameters for defining the rotation between frames
+    original_frame = "J2000"
+    target_frame = "IAU_Neptune"
+    target_frame_spice = "IAU_Neptune"
+   
+    # create rotation model settings and assign to body settings of "Neptune"
+    body_settings.get( "Neptune" ).rotation_model_settings = environment_setup.rotation_model.simple_from_spice(
+    original_frame, target_frame, target_frame_spice, start_epoch)
+
+    body_settings.get("Neptune").ephemeris_settings = environment_setup.ephemeris.direct_spice(
+        global_frame_origin, global_frame_orientation)
 
 
     # # Create system of selected bodies
@@ -100,7 +109,7 @@ def Create_Acceleration_Models(settings_dict,system_of_bodies):
             acts.setdefault("Neptune", []).append(
             propagation_setup.acceleration.point_mass_gravity())
 
-            if neptune_extended_gravity is not "None":
+            if neptune_extended_gravity != "None":
                 acts = SetExtendedGravityNeptune(neptune_extended_gravity,acts)
             continue
 
@@ -283,12 +292,16 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, system_of_
     return simulated_pseudo_observations, relative_position_observation_settings
 
 
-def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings):
+def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings,pseudo_observations_settings,pseudo_observations):
 
-    pseudo_observations_settings = settings_dict['pseudo_observations_settings']
-    pseudo_observations = settings_dict['pseudo_observations']
+    #pseudo_observations_settings = settings_dict['pseudo_observations_settings']
+    #pseudo_observations = settings_dict['pseudo_observations']
 
     parameters_to_estimate_settings = estimation_setup.parameter.initial_states(propagator_settings, system_of_bodies)
+    
+    if "Rotation_Pole_Position_Neptune" in settings_dict["est_parameters"]:
+        parameters_to_estimate_settings.append(estimation_setup.parameter.rotation_pole_position('Neptune'))
+
 
     parameters_to_estimate = estimation_setup.create_parameter_set(parameters_to_estimate_settings,
                                                                     system_of_bodies,

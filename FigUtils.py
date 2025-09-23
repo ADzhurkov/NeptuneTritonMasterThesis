@@ -15,6 +15,11 @@ from scipy.signal import periodogram, get_window
 from tudatpy.astro.time_conversion import DateTime
 from tudatpy.numerical_simulation import Time
 
+from datetime import datetime
+from pathlib import Path
+
+
+
 def ConvertToDateTime(float_time_J2000):
     time_DateTime = []
 
@@ -630,3 +635,53 @@ def Plot3D(pseudo_observations,state_history_array,states_SPICE):
     ax.legend(loc='upper right')
     fig.tight_layout()
     return fig
+
+
+# ##############################################################################################
+# # Function to compare RSW residuals from different simulations WIP
+# ##############################################################################################
+#Example Usage
+#-----------------------------------------------------------------------------------------------------------------------------
+# path_list = ["PoleOrientation/DefaultRotationModel/residuals_rsw.npy","PoleOrientation/SimpleRotationModel/residuals_rsw.npy"]
+# label_list = ["Default Rotation Model","Simple Rotation Model"]
+# fig,fig_diff = FigUtils.Compare_RSW_Different_Solutions(path_list,label_list)
+
+# fig.savefig("R_RSW_Comparison_Simple_Rotation.pdf")
+# fig_diff.savefig("Diff_R_RSW_Comparison_Simple_Rotation.pdf")
+
+#-----------------------------------------------------------------------------------------------------------------------------
+
+
+#Loads .npy file, extracts the last entry and converts to [km]
+def LoadAndExtractResiduals(path):
+    residuals = np.load(path)
+    residuals_time = residuals[-1][:,0]
+    residuals_final = residuals[-1][:,1:4]/1e3
+    return residuals_time,residuals_final
+
+def Compare_RSW_Different_Solutions(path_list,label_list):
+    
+    path = Path("/home/atn/Documents/Year 5/Thesis/Github/NeptuneTritonMasterThesis/Results")
+
+    residuals_time = [None] * np.size(path_list)
+    residuals_final = [None] * np.size(path_list)
+
+    
+    fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True, constrained_layout=True)
+    for i in range(np.size(path_list)):
+        residuals_time[i],residuals_final[i] = LoadAndExtractResiduals(path / path_list[i])
+       
+        fig,axes = Residuals_RSW_Compare(residuals_final[i], residuals_time[i],
+                        fig=fig, axes=axes,
+                        label_prefix=label_list[i],
+                        overlay_idx=i)
+
+
+
+    difference_residuals_rsw = residuals_final[0] - residuals_final[1]
+
+    fig_diff = Residuals_RSW(difference_residuals_rsw,residuals_time[0],type="difference")
+
+    return fig, fig_diff
+    #fig.savefig("Residuals_RSW_Comparison_SSB.pdf")
+    #fig_diff.savefig("Difference_Residuals_RSW_Neptune_SSB.pdf")

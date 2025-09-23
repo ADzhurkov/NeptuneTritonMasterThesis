@@ -8,6 +8,8 @@ import matplotlib
 from matplotlib import pyplot as plt
 import matplotlib.dates as mdates
 import datetime as dt
+from datetime import datetime
+from pathlib import Path
 
 # tudatpy imports
 from tudatpy import util,math
@@ -84,12 +86,9 @@ def main(settings: dict,out_dir):
     # CREATE & RUN ESTIMATOR  
     ##############################################################################################
 
-    settings_est = dict()
-    settings_est['pseudo_observations_settings'] = pseudo_observations_settings
-    settings_est['pseudo_observations'] = pseudo_observations
 
     estimation_output, original_parameter_vector= PropFuncs.Create_Estimation_Output(settings_est,
-    system_of_bodies,propagator_settings)
+    system_of_bodies,propagator_settings,pseudo_observations_settings,pseudo_observations)
 
     print("END OF ESTIMATION")
 
@@ -205,13 +204,18 @@ def main(settings: dict,out_dir):
 
 
 
+def make_timestamped_folder(base_path="Results"):
+    folder_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    full_path = Path(base_path) / folder_name
+    full_path.mkdir(parents=True, exist_ok=True)
+    return full_path
 
 if __name__ == "__main__":
         
     # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
     simulation_start_epoch = DateTime(2025, 7,  10).epoch()
     simulation_end_epoch   = DateTime(2025, 8, 11).epoch()
-    global_frame_origin = 'Neptune'
+    global_frame_origin = 'SSB'
     global_frame_orientation = 'J2000'
 
     #--------------------------------------------------------------------------------------------
@@ -263,6 +267,16 @@ if __name__ == "__main__":
     settings_obs["bodies"] = [("Triton", "Neptune")]                           # bodies to observe
     settings_obs["cadence"] = 60*60*3 # Every 3 hours
 
+    #--------------------------------------------------------------------------------------------
+    # OBSERVATION SETTINGS 
+    #--------------------------------------------------------------------------------------------
+
+    settings_est = dict()
+    #settings_est['pseudo_observations_settings'] = pseudo_observations_settings
+    #settings_est['pseudo_observations'] = pseudo_observations
+    settings_est['est_parameters'] = ['initial_state','Rotation_Pole_Position_Neptune']
+
+
     
     #fill in settings 
     settings = dict()
@@ -270,58 +284,19 @@ if __name__ == "__main__":
     settings["acc"] = settings_acc
     settings["prop"] = settings_prop
     settings["obs"] = settings_obs
+    settings["est"] = settings_est
 
-    from datetime import datetime
-    from pathlib import Path
 
-    def make_timestamped_folder(base_path="Results"):
-        folder_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        full_path = Path(base_path) / folder_name
-        full_path.mkdir(parents=True, exist_ok=True)
-        return full_path
 
-    #main(settings,make_timestamped_folder("Results_Adjusted_Barycenter"))
+    #main(settings,make_timestamped_folder("Results/PoleOrientation"))
+
+
+    path_list = ["PoleOrientation/SimpleRotationModel/residuals_rsw.npy","PoleOrientation/EstimationSimpleRotationModel/residuals_rsw.npy"]
+    label_list = ["No Estimation","Estimated Simple Rotational Model"]
+    fig,fig_diff = FigUtils.Compare_RSW_Different_Solutions(path_list,label_list)
+
+    fig.savefig("R_RSW_Estimation_Comparison.pdf")
+    fig_diff.savefig("Diff_R_RSW_Estimation_Comparison.pdf")
 
 
     #----------------------------------------------------------------------------
-    #Compare
-    path = Path("/home/atn/Documents/Year 5/Thesis/Github/NeptuneTritonMasterThesis/Results_Adjusted_Barycenter")
-
-    residuals_rsw_Neptune = np.load(path / "Neptune/residuals_rsw.npy")   # works
-    residuals_rsw_SSB = np.load(path / "SSB/residuals_rsw.npy")
-    residuals_rsw_SSB_Not_Adjusted = np.load(path / "NotAdjustedSSB/residuals_rsw.npy")
-
-    residuals_rsw_Neptune_time = residuals_rsw_Neptune[-1][:,0]
-    residuals_rsw_Neptune_final = residuals_rsw_Neptune[-1][:,1:4]/1e3
-
-    residuals_rsw_SSB_time = residuals_rsw_SSB[-1][:,0]
-    residuals_rsw_SSB_final = residuals_rsw_SSB[-1][:,1:4]/1e3
-
-    residuals_rsw_SSB_Not_Adjusted_time = residuals_rsw_SSB_Not_Adjusted[-1][:,0]
-    residuals_rsw_SSB_Not_Adjusted_final = residuals_rsw_SSB_Not_Adjusted[-1][:,1:4]/1e3
-
-    
-
-    difference_residuals_rsw = residuals_rsw_Neptune_final - residuals_rsw_SSB_final
-
-
-    fig, axes = FigUtils.Residuals_RSW_Compare(residuals_rsw_Neptune_final, residuals_rsw_Neptune_time,
-                               label_prefix='Global Frame Origin: Neptune',
-                               overlay_idx=0)
-
-
-    fig,axes = FigUtils.Residuals_RSW_Compare(residuals_rsw_SSB_final, residuals_rsw_SSB_time,
-                       fig=fig, axes=axes,
-                       label_prefix="Global Frame Origin: SSB",
-                       overlay_idx=1)
-    
-    
-    fig_diff = FigUtils.Residuals_RSW(difference_residuals_rsw,residuals_rsw_Neptune_time,type="difference")
-
-    # fig,axes = FigUtils.Residuals_RSW_Compare(residuals_rsw_SSB_Not_Adjusted_final, residuals_rsw_SSB_Not_Adjusted_time,
-    #                     fig=fig, axes=axes,
-    #                     label_prefix="Global Frame Origin: SSB, Neptune Not Adjusted",
-    #                     overlay_idx=1)
-
-    fig.savefig("Residuals_RSW_Comparison_SSB.pdf")
-    fig_diff.savefig("Difference_Residuals_RSW_Neptune_SSB.pdf")
