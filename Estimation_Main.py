@@ -142,14 +142,12 @@ def main(settings: dict,out_dir):
     residauls_rsw_final_time = residuals_rsw[-1][:,0]
     residuals_rsw_final = residuals_rsw[-1][:,1:4]/1e3
     
-    residuals_rsw_fig = FigUtils.Residuals_RSW(residuals_j2000_final, residuals_rsw_final, residauls_rsw_final_time)
+    residuals_rsw_fig = FigUtils.Residuals_RSW(residuals_rsw_final, residauls_rsw_final_time)
 
     #-------------------------------------------------------------------------------
     rms_fig = FigUtils.Residuals_RMS(residuals_j2000)
-    #-------------------------------------------------------------------------------
-    #Orbit_3D_fig = FigUtils.Plot3D(pseudo_observations,state_history_array,states_SPICE)
-    #-------------------------------------------------------------------------------
-    
+
+
     #Get Triton Mean Motion
     kep = dep_vars_array[:, 10:16]  # [a, e, i, ω, Ω, ν]
     a = kep[:, 0]                   # meters
@@ -213,7 +211,7 @@ if __name__ == "__main__":
     # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
     simulation_start_epoch = DateTime(2025, 7,  10).epoch()
     simulation_end_epoch   = DateTime(2025, 8, 11).epoch()
-    global_frame_origin = 'SSB'
+    global_frame_origin = 'Neptune'
     global_frame_orientation = 'J2000'
 
     #--------------------------------------------------------------------------------------------
@@ -282,17 +280,48 @@ if __name__ == "__main__":
         full_path.mkdir(parents=True, exist_ok=True)
         return full_path
 
-    main(settings,make_timestamped_folder("Results_Adjusted_Barycenter"))
+    #main(settings,make_timestamped_folder("Results_Adjusted_Barycenter"))
 
 
-    # path = Path("/home/atn/Documents/Year 5/Thesis/Github/NeptuneTritonMasterThesis/Results_Week3_September_2025_20_Years/2025-09-22_15-47-29")
-    # residuals_rsw = np.load(path / "residuals_rsw.npy")   # works
+    #----------------------------------------------------------------------------
+    #Compare
+    path = Path("/home/atn/Documents/Year 5/Thesis/Github/NeptuneTritonMasterThesis/Results_Adjusted_Barycenter")
 
-    # residuals_rsw = np.load(path /"residuals_rsw.npy")
-    # residuals_j2000 = np.load(path / "residuals_j2000.npy")
-    # residuals_rsw_fig = FigUtils.Residuals_RSW(residuals_j2000_final, residuals_rsw_final, residauls_rsw_final_time)
+    residuals_rsw_Neptune = np.load(path / "Neptune/residuals_rsw.npy")   # works
+    residuals_rsw_SSB = np.load(path / "SSB/residuals_rsw.npy")
+    residuals_rsw_SSB_Not_Adjusted = np.load(path / "NotAdjustedSSB/residuals_rsw.npy")
 
-    # residuals_rsw_fig.savefig("Residuals_RSW.pdf")
+    residuals_rsw_Neptune_time = residuals_rsw_Neptune[-1][:,0]
+    residuals_rsw_Neptune_final = residuals_rsw_Neptune[-1][:,1:4]/1e3
 
+    residuals_rsw_SSB_time = residuals_rsw_SSB[-1][:,0]
+    residuals_rsw_SSB_final = residuals_rsw_SSB[-1][:,1:4]/1e3
+
+    residuals_rsw_SSB_Not_Adjusted_time = residuals_rsw_SSB_Not_Adjusted[-1][:,0]
+    residuals_rsw_SSB_Not_Adjusted_final = residuals_rsw_SSB_Not_Adjusted[-1][:,1:4]/1e3
 
     
+
+    difference_residuals_rsw = residuals_rsw_Neptune_final - residuals_rsw_SSB_final
+
+
+    fig, axes = FigUtils.Residuals_RSW_Compare(residuals_rsw_Neptune_final, residuals_rsw_Neptune_time,
+                               label_prefix='Global Frame Origin: Neptune',
+                               overlay_idx=0)
+
+
+    fig,axes = FigUtils.Residuals_RSW_Compare(residuals_rsw_SSB_final, residuals_rsw_SSB_time,
+                       fig=fig, axes=axes,
+                       label_prefix="Global Frame Origin: SSB",
+                       overlay_idx=1)
+    
+    
+    fig_diff = FigUtils.Residuals_RSW(difference_residuals_rsw,residuals_rsw_Neptune_time,type="difference")
+
+    # fig,axes = FigUtils.Residuals_RSW_Compare(residuals_rsw_SSB_Not_Adjusted_final, residuals_rsw_SSB_Not_Adjusted_time,
+    #                     fig=fig, axes=axes,
+    #                     label_prefix="Global Frame Origin: SSB, Neptune Not Adjusted",
+    #                     overlay_idx=1)
+
+    fig.savefig("Residuals_RSW_Comparison_SSB.pdf")
+    fig_diff.savefig("Difference_Residuals_RSW_Neptune_SSB.pdf")

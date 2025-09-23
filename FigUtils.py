@@ -28,12 +28,16 @@ def ConvertToDateTime(float_time_J2000):
 # ##############################################################################################
 # # RESIDUALS RSW
 # ##############################################################################################
-def Residuals_RSW(residuals_J2000, residuals_RSW, time):
+def Residuals_RSW(residuals_RSW, time,type="normal"):
 
     time_dt = ConvertToDateTime(time)
     fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True, constrained_layout=True)
 
-    labels = [r'$\Delta R$', r'$\Delta S$', r'$\Delta W$']
+    if type == "normal":
+        labels = [r'$\Delta R$', r'$\Delta S$', r'$\Delta W$']
+    elif type == "difference":
+        labels = [r'$Difference \Delta R$', r'$Difference \Delta S$', r'$Difference \Delta W$']
+
     Y = [residuals_RSW[:,0], residuals_RSW[:,1], residuals_RSW[:,2]]
 
     # Pick consistent colors for R,S,W from the current color cycle
@@ -52,7 +56,7 @@ def Residuals_RSW(residuals_J2000, residuals_RSW, time):
                 ax.set_ylim(-1.1*m, 1.1*m)
 
                 #ax.set_ylim(-1.1*min(Y[j]), 1.1*max(Y[j]))
-
+        
         ax.set_ylabel(f'{labels[k]} [km]')
         ax.grid(True, alpha=0.3)
         
@@ -67,12 +71,194 @@ def Residuals_RSW(residuals_J2000, residuals_RSW, time):
 
     # (optional) minor ticks if you want extra granularity:
     # axes[-1].xaxis.set_minor_locator(mdates.AutoDateLocator(minticks=5, maxticks=12))
-
-    fig.suptitle('Relative position in RSW') #, y=0.995)
+    if type == "normal":
+        fig.suptitle('Residuals in RSW Frame') #, y=0.995)
+    
+    elif type == "difference":
+        fig.suptitle('Difference in Residuals RSW Neptune and SSB') #, y=0.995)
     
 
     return fig
 
+
+
+
+
+# ##############################################################################################
+# # RESIDUALS RSW can compare
+# ##############################################################################################
+# def Residuals_RSW_Compare(residuals_RSW, time,
+#                        fig=None, axes=None,
+#                        label_prefix=None,
+#                        faint_alpha=0.50,
+#                        line_width_main=1.6,
+#                        line_width_other=1.0,
+#                        set_panel_limits=True,
+#                        expand_only=True):
+#     """
+#     Overlay-friendly RSW residual plotter.
+
+#     Parameters
+#     ----------
+#     residuals_RSW : (N,3) array
+#         Columns: [ΔR, ΔS, ΔW] in km (or your units).
+#     time : (N,) array-like
+#         Epochs convertible by ConvertToDateTime(...).
+#     fig, axes : optional
+#         If provided, must be (Figure, ndarray/list of 3 Axes). New lines are drawn on them.
+#         If None, a fresh 3x1 figure is created and returned.
+#     label_prefix : str or None
+#         If given, labels become f"{label_prefix} ΔR/S/W" on the focused row legend.
+#     faint_alpha : float
+#         Opacity for the two non-focused components.
+#     set_panel_limits : bool
+#         If True, set y-limits from THIS dataset’s focused component per panel.
+#     expand_only : bool
+#         If True and set_panel_limits is True, only expand current limits (don’t shrink).
+
+#     Returns
+#     -------
+#     fig, axes
+#     """
+#     time_dt = ConvertToDateTime(time)
+
+#     created = False
+#     if fig is None or axes is None:
+#         fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True, constrained_layout=True)
+#         created = True
+
+#     labels = [r'$\Delta R$', r'$\Delta S$', r'$\Delta W$']
+#     Y = [residuals_RSW[:, 0], residuals_RSW[:, 1], residuals_RSW[:, 2]]
+
+#     # colors: consistent for R, S, W
+#     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+#     colors = (colors + colors + colors)[:3]
+
+#     for k, ax in enumerate(axes):
+#         # Plot all three series; make the current one opaque, others faint
+#         for j in range(3):
+#             alpha = 1.0 if j == k else faint_alpha
+#             lw    = line_width_main if j == k else line_width_other
+#             z     = 3 if j == k else 1
+#             lab   = (f"{label_prefix} {labels[j]}" if label_prefix else f"{labels[j]}") if j == k else None
+#             ax.plot(time_dt, Y[j], color=colors[j], alpha=alpha, lw=lw, zorder=z, label=lab)
+
+#         ax.set_ylabel(f'{labels[k]} [km]')
+#         ax.grid(True, alpha=0.3)
+
+#         if set_panel_limits:
+#             y_main = np.asarray(Y[k], float)
+#             y_main = y_main[np.isfinite(y_main)]
+#             if y_main.size:
+#                 m = np.nanmax(np.abs(y_main))
+#                 if m == 0:
+#                     lo, hi = -1.0, 1.0
+#                 else:
+#                     lo, hi = -1.1*m, 1.1*m
+
+#                 if expand_only:
+#                     # Only enlarge current limits
+#                     cur_lo, cur_hi = ax.get_ylim()
+#                     lo = min(lo, cur_lo)
+#                     hi = max(hi, cur_hi)
+#                 ax.set_ylim(lo, hi)
+
+#     if created:
+#         axes[-1].set_xlabel('Time')
+
+#         # nice datetime ticks on shared x
+#         locator   = mdates.AutoDateLocator()
+#         formatter = mdates.ConciseDateFormatter(locator)
+#         axes[-1].xaxis.set_major_locator(locator)
+#         axes[-1].xaxis.set_major_formatter(formatter)
+
+#         fig.suptitle('Relative position in RSW')
+
+#     # Put a legend only on the top axes (one entry per overlay)
+#     # (Call multiple times → legend will accumulate entries from overlays.)
+#     axes[0].legend(loc='upper left', ncol=2)
+
+#     return fig, axes
+
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib import cm
+
+def _overlay_colors(overlay_idx: int) -> list[str]:
+    """Return 3 distinct colors for this overlay index."""
+    # Use tab20 (20 distinct colors); take chunks of 3
+    base = cm.get_cmap('tab20').colors  # length 20, tuples in 0..1
+    L = len(base)
+    start = (overlay_idx * 3) % L
+    return [base[(start + i) % L] for i in range(3)]
+
+def Residuals_RSW_Compare(residuals_RSW, time,
+                       fig=None, axes=None,
+                       label_prefix=None,
+                       faint_alpha=0.50,
+                       line_width_main=1.6,
+                       line_width_other=1.0,
+                       set_panel_limits=False,
+                       expand_only=True,
+                       overlay_idx=0):
+    time_dt = ConvertToDateTime(time)
+
+    created = False
+    if fig is None or axes is None:
+        fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True, constrained_layout=True)
+        created = True
+
+    labels = [r'$\Delta R$', r'$\Delta S$', r'$\Delta W$']
+    Y = [residuals_RSW[:, 0], residuals_RSW[:, 1], residuals_RSW[:, 2]]
+
+    # ---- NEW: colors change per call
+    colors = _overlay_colors(overlay_idx)
+
+    # Distinguish overlays further with linestyles if you’d like
+    linestyles = ['solid', '--', '-.', ':']
+    ls = linestyles[overlay_idx % len(linestyles)]
+
+    for k, ax in enumerate(axes):
+        # plot all three; current component opaque, others faint
+        for j in range(3):
+            alpha = 1.0 if j == k else faint_alpha
+            lw    = line_width_main if j == k else line_width_other
+            z     = 3 if j == k else 1
+            lab   = (f"{label_prefix} {labels[j]}" if label_prefix else f"{labels[j]}") if j == k else None
+            if j == k:
+                ax.plot(time_dt, Y[j],
+                        color=colors[j], linestyle=ls,
+                        alpha=alpha, lw=lw, zorder=z, label=lab)
+
+        ax.set_ylabel(f'{labels[k]} [km]')
+        ax.grid(True, alpha=0.3)
+
+        if set_panel_limits:
+            y_main = np.asarray(Y[k], float)
+            y_main = y_main[np.isfinite(y_main)]
+            if y_main.size:
+                m = np.nanmax(np.abs(y_main))
+                lo, hi = (-1.1*m, 1.1*m) if m > 0 else (-1.0, 1.0)
+                if expand_only:
+                    cur_lo, cur_hi = ax.get_ylim()
+                    lo, hi = min(lo, cur_lo), max(hi, cur_hi)
+                ax.set_ylim(lo, hi)
+
+    if created:
+        axes[-1].set_xlabel('Time')
+        locator   = mdates.AutoDateLocator()
+        formatter = mdates.ConciseDateFormatter(locator)
+        axes[-1].xaxis.set_major_locator(locator)
+        axes[-1].xaxis.set_major_formatter(formatter)
+        fig.suptitle('Relative position in RSW')
+
+    # legend accumulates one entry per overlay (from focused row)
+    axes[0].legend(loc='lower right')#, ncol=2)
+    axes[1].legend(loc='lower right')
+    axes[2].legend(loc='lower right')
+    
+    return fig, axes
 
 
 # ##############################################################################################

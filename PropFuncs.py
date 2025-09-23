@@ -61,8 +61,8 @@ def Create_Env(settings_dict):
         )
 
 
-    body_settings.get("Neptune").ephemeris_settings = environment_setup.ephemeris.direct_spice(
-        global_frame_origin, global_frame_orientation)
+    # body_settings.get("Neptune").ephemeris_settings = environment_setup.ephemeris.direct_spice(
+    #     global_frame_origin, global_frame_orientation)
 
 
     # # Create system of selected bodies
