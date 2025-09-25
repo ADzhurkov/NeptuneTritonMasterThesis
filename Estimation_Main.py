@@ -18,7 +18,7 @@ from tudatpy import constants
 from tudatpy.interface import spice
 from tudatpy.numerical_simulation import environment_setup
 from tudatpy.numerical_simulation import propagation_setup
-from tudatpy.numerical_simulation import estimation, estimation_setup,Time
+from tudatpy.numerical_simulation import estimation, estimation_setup #,Time
 
 
 from tudatpy import numerical_simulation
@@ -288,15 +288,15 @@ if __name__ == "__main__":
 
 
 
-    #main(settings,make_timestamped_folder("Results/PoleOrientation"))
+    main(settings,make_timestamped_folder("Results/Tudatpy1_Test"))
 
 
-    path_list = ["PoleOrientation/SimpleRotationModel/residuals_rsw.npy","PoleOrientation/EstimationSimpleRotationModel/residuals_rsw.npy"]
-    label_list = ["No Estimation","Estimated Simple Rotational Model"]
-    fig,fig_diff = FigUtils.Compare_RSW_Different_Solutions(path_list,label_list)
+    #path_list = ["PoleOrientation/SimpleRotationModel/residuals_rsw.npy","PoleOrientation/EstimationSimpleRotationModel/residuals_rsw.npy"]
+    #label_list = ["No Estimation","Estimated Simple Rotational Model"]
+    #fig,fig_diff = FigUtils.Compare_RSW_Different_Solutions(path_list,label_list)
 
-    fig.savefig("R_RSW_Estimation_Comparison.pdf")
-    fig_diff.savefig("Diff_R_RSW_Estimation_Comparison.pdf")
+    #fig.savefig("R_RSW_Estimation_Comparison.pdf")
+    #fig_diff.savefig("Diff_R_RSW_Estimation_Comparison.pdf")
 
 
     #----------------------------------------------------------------------------

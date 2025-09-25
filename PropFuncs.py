@@ -28,7 +28,7 @@ def Create_Env(settings_dict):
 
     body_settings.get("Triton").ephemeris_settings = environment_setup.ephemeris.interpolated_spice(
         start_epoch-100*30, end_epoch+100*30, interpolator_triton_cadance, 
-        global_frame_origin, global_frame_orientation)
+        'Neptune', global_frame_orientation)
 
 
     ## Neptune 
