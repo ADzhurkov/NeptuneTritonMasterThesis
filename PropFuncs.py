@@ -275,8 +275,8 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, system_of_
         
         link_ends = dict()
         
-        link_ends[links.receiver] = links.body_origin_link_end_id(obs_bodies[0])
-        link_ends[links.transmitter] = links.body_origin_link_end_id(obs_bodies[1])
+        link_ends[links.observed_body] = links.body_origin_link_end_id(obs_bodies[0])
+        link_ends[links.observer] = links.body_origin_link_end_id(obs_bodies[1])
         
         
         #link_definition = estimation_setup.observation.LinkDefinition(link_ends)
@@ -288,7 +288,7 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, system_of_
                 model_settings.relative_position_observable_type,
                 link_definition,
                 observation_times,
-                reference_link_end_type =links.LinkEndType.receiver )] #estimation_setup.observation.observed_body
+                reference_link_end_type = links.LinkEndType.observed_body)] #estimation_setup.observation.observed_body
 
 
     # Create observation simulators
@@ -333,7 +333,7 @@ def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings,
     estimation_input = estimation_analysis.EstimationInput(observations_and_times=pseudo_observations,
                                                     convergence_checker=convergence_settings)
     # Set methodological options
-    estimation_analysis.define_estimation_settings(save_state_history_per_iteration=True)
+    estimation_input.define_estimation_settings(save_state_history_per_iteration=True)
 
     # Perform the estimation
     print('Performing the estimation...')
