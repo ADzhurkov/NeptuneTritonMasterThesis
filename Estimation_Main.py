@@ -12,13 +12,18 @@ from datetime import datetime
 from pathlib import Path
 
 # tudatpy imports
-from tudatpy import util,math
+from tudatpy import math
 from tudatpy import constants
 
 from tudatpy.interface import spice
 from tudatpy.numerical_simulation import environment_setup
 from tudatpy.numerical_simulation import propagation_setup
-from tudatpy.numerical_simulation import estimation, estimation_setup #,Time
+import tudatpy.estimation
+#import tudatpy.estimation_setup
+
+#from tudatpy.numerical_simulation import estimation
+
+#from tudatpy.numerical_simulation import estimation_setup #,Time
 
 
 from tudatpy import numerical_simulation
@@ -80,7 +85,7 @@ def main(settings: dict,out_dir):
     ##############################################################################################
 
     pseudo_observations, pseudo_observations_settings = PropFuncs.make_relative_position_pseudo_observations(
-        simulation_start_epoch.to_float(),simulation_end_epoch.to_float(), system_of_bodies, settings)
+        simulation_start_epoch,simulation_end_epoch, system_of_bodies, settings)
 
     ##############################################################################################
     # CREATE & RUN ESTIMATOR  
@@ -109,7 +114,7 @@ def main(settings: dict,out_dir):
     fixed_step_size = settings_prop["fixed_step_size"]
 
     # Get Triton's state relative to Neptune SPICE
-    epochs = np.arange(simulation_start_epoch.to_float(), simulation_end_epoch.to_float()+60*5, fixed_step_size ) #test_settings_obs["cadence"]
+    epochs = np.arange(simulation_start_epoch, simulation_end_epoch+60*5, fixed_step_size ) #test_settings_obs["cadence"]
     states_SPICE = np.array([
         spice.get_body_cartesian_state_at_epoch(
             target_body_name="Triton",
@@ -222,8 +227,8 @@ if __name__ == "__main__":
     # ENVIORONMENT SETTINGS 
     #--------------------------------------------------------------------------------------------
     settings_env = dict()
-    settings_env["start_epoch"] = simulation_start_epoch.to_float()
-    settings_env["end_epoch"] = simulation_end_epoch.to_float()
+    settings_env["start_epoch"] = simulation_start_epoch
+    settings_env["end_epoch"] = simulation_end_epoch
     settings_env["bodies"] = ['Sun','Jupiter', 'Saturn','Neptune','Triton','Uranus','Mercury','Venus','Mars','Earth']
     settings_env["global_frame_origin"] = global_frame_origin
     settings_env["global_frame_orientation"] = global_frame_orientation

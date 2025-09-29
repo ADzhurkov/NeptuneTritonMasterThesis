@@ -13,7 +13,7 @@ from scipy.signal import welch, get_window
 from scipy.signal import periodogram, get_window
 
 from tudatpy.astro.time_conversion import DateTime
-from tudatpy.numerical_simulation import Time
+#from tudatpy.numerical_simulation import Time
 
 from datetime import datetime
 from pathlib import Path

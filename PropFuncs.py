@@ -4,7 +4,12 @@ import yaml
 from tudatpy import numerical_simulation
 from tudatpy.numerical_simulation import environment_setup
 from tudatpy.numerical_simulation import propagation_setup
-from tudatpy.numerical_simulation import estimation, estimation_setup,Time
+import tudatpy.estimation
+from tudatpy.estimation.observable_models_setup import links, model_settings
+from tudatpy.estimation import observations_setup
+from tudatpy.estimation import estimation_analysis
+from tudatpy.dynamics import parameters_setup
+#from tudatpy.numerical_simulation import estimation, estimation_setup,Time
 
 from tudatpy.interface import spice
 
@@ -229,7 +234,7 @@ def Create_Propagator_Settings(settings_dict,acceleration_models):
         acceleration_models,
         [bodies_to_propagate],
         initial_state,
-        Time(simulation_start_epoch),
+        simulation_start_epoch,
         integrator_settings,
         termination_condition,
         output_variables=dependent_variables_to_save
@@ -239,7 +244,7 @@ def Create_Propagator_Settings(settings_dict,acceleration_models):
 def create_rkf78_integrator_settings(timestep=60):
 
     # Create numerical integrator settings
-    fixed_step_size = Time(timestep)
+    fixed_step_size = timestep
     integrator_settings = propagation_setup.integrator.runge_kutta_fixed_step(
         fixed_step_size, coefficient_set=propagation_setup.integrator.CoefficientSets.rkf_78
     )
@@ -257,34 +262,42 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, system_of_
     
     observation_times = np.arange(observation_start_epoch + cadence, observation_end_epoch - cadence, cadence)
 
-    observation_times = np.array([Time(t) for t in observation_times])
+    observation_times = np.array([t for t in observation_times])
     observation_times_test = observation_times[0]
     bodies_to_observe = settings["bodies"]
     relative_position_observation_settings = []
 
     for obs_bodies in bodies_to_observe:
-        link_ends = {
-            estimation_setup.observation.observed_body: estimation_setup.observation.body_origin_link_end_id(obs_bodies[0]),
-            estimation_setup.observation.observer: estimation_setup.observation.body_origin_link_end_id(obs_bodies[1])}
-        link_definition = estimation_setup.observation.LinkDefinition(link_ends)
+        
+        # link_ends = {
+        #     estimation_setup.observation.observed_body: estimation_setup.observation.body_origin_link_end_id(obs_bodies[0]),
+        #     estimation_setup.observation.observer: estimation_setup.observation.body_origin_link_end_id(obs_bodies[1])}
+        
+        link_ends = dict()
+        
+        link_ends[links.receiver] = links.body_origin_link_end_id(obs_bodies[0])
+        link_ends[links.transmitter] = links.body_origin_link_end_id(obs_bodies[1])
+        
+        
+        #link_definition = estimation_setup.observation.LinkDefinition(link_ends)
+        link_definition = links.LinkDefinition(link_ends)
 
+        relative_position_observation_settings.append(model_settings.relative_cartesian_position(link_definition))
 
-        relative_position_observation_settings.append(estimation_setup.observation.relative_cartesian_position(link_definition))
-
-        observation_simulation_settings = [estimation_setup.observation.tabulated_simulation_settings(
-                estimation_setup.observation.relative_position_observable_type,
+        observation_simulation_settings = [observations_setup.observations_simulation_settings.tabulated_simulation_settings(
+                model_settings.relative_position_observable_type,
                 link_definition,
                 observation_times,
-                reference_link_end_type=estimation_setup.observation.observed_body)]
+                reference_link_end_type =links.LinkEndType.receiver )] #estimation_setup.observation.observed_body
 
 
     # Create observation simulators
-    ephemeris_observation_simulators = estimation_setup.create_observation_simulators(
+    ephemeris_observation_simulators = observations_setup.observations_simulation_settings.create_observation_simulators(
         relative_position_observation_settings, system_of_bodies)
 
     # Get ephemeris states as ObservationCollection
     print('Checking spice for position pseudo observations...')
-    simulated_pseudo_observations = estimation.simulate_observations(
+    simulated_pseudo_observations = observations_setup.observations_wrapper.simulate_observations(
         observation_simulation_settings,
         ephemeris_observation_simulators,
         system_of_bodies)
@@ -297,29 +310,30 @@ def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings,
     #pseudo_observations_settings = settings_dict['pseudo_observations_settings']
     #pseudo_observations = settings_dict['pseudo_observations']
 
-    parameters_to_estimate_settings = estimation_setup.parameter.initial_states(propagator_settings, system_of_bodies)
+    parameters_to_estimate_settings = parameters_setup.initial_states(propagator_settings, system_of_bodies)
     
     if "Rotation_Pole_Position_Neptune" in settings_dict["est_parameters"]:
-        parameters_to_estimate_settings.append(estimation_setup.parameter.rotation_pole_position('Neptune'))
+        parameters_to_estimate_settings.append(parameters_setup.rotation_pole_position('Neptune'))
 
 
-    parameters_to_estimate = estimation_setup.create_parameter_set(parameters_to_estimate_settings,
+    parameters_to_estimate = parameters_setup.create_parameter_set(parameters_to_estimate_settings,
                                                                     system_of_bodies,
                                                                     propagator_settings)
 
     original_parameter_vector = parameters_to_estimate.parameter_vector
 
     print('Running propagation...')
-    estimator = numerical_simulation.Estimator(system_of_bodies, parameters_to_estimate,
+
+    estimator = estimation_analysis.Estimator(system_of_bodies, parameters_to_estimate,
                                                 pseudo_observations_settings, propagator_settings)
 
-    convergence_settings = estimation.estimation_convergence_checker(maximum_iterations=5)
+    convergence_settings = estimation_analysis.estimation_convergence_checker(maximum_iterations=5)
 
     # Create input object for the estimation
-    estimation_input = estimation.EstimationInput(observations_and_times=pseudo_observations,
+    estimation_input = estimation_analysis.EstimationInput(observations_and_times=pseudo_observations,
                                                     convergence_checker=convergence_settings)
     # Set methodological options
-    estimation_input.define_estimation_settings(save_state_history_per_iteration=True)
+    estimation_analysis.define_estimation_settings(save_state_history_per_iteration=True)
 
     # Perform the estimation
     print('Performing the estimation...')
