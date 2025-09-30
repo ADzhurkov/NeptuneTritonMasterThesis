@@ -19,6 +19,7 @@ from tudatpy.interface import spice
 from tudatpy.numerical_simulation import environment_setup
 from tudatpy.numerical_simulation import propagation_setup
 import tudatpy.estimation
+from tudatpy import util
 #import tudatpy.estimation_setup
 
 #from tudatpy.numerical_simulation import estimation
@@ -104,7 +105,7 @@ def main(settings: dict,out_dir):
     state_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.state_history_float
     state_history_array = util.result2array(state_history)
 
-    dep_vars_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.dependent_variable_history_float
+    dep_vars_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.dependent_variable_history
     dep_vars_array = util.result2array(dep_vars_history)
 
     ##############################################################################################
@@ -132,7 +133,7 @@ def main(settings: dict,out_dir):
     ##############################################################################################
 
     residuals_j2000, residuals_rsw = ProcessingUtils.format_residual_history(estimation_output.residual_history,
-                                                                pseudo_observations.get_concatenated_float_observation_times(),
+                                                                pseudo_observations.get_concatenated_observation_times(),
                                                                 state_history)
 
 

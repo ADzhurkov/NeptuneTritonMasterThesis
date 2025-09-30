@@ -28,7 +28,7 @@ def make_rsw_rotation_from_state_history(state_history, size=3):
     else:
         state_history_dict = array_to_dict(state_history)
 
-    state_history_interpolator = math.interpolators.create_one_dimensional_vector_interpolator_from_float(
+    state_history_interpolator = math.interpolators.create_one_dimensional_vector_interpolator(
         state_history_dict, math.interpolators.lagrange_interpolation(8))
 
     def rsw_rotation_at_epoch(sample_epoch):

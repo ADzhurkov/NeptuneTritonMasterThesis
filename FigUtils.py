@@ -24,7 +24,7 @@ def ConvertToDateTime(float_time_J2000):
     time_DateTime = []
 
     for t in float_time_J2000:
-        t = DateTime.from_epoch(Time(t)).to_python_datetime()
+        t = DateTime.from_epoch(t).to_python_datetime()
         time_DateTime.append(t)
 
     return time_DateTime
