@@ -85,8 +85,107 @@ def Residuals_RSW(residuals_RSW, time,type="normal"):
 
     return fig
 
+# ##############################################################################################
+# # COMPONENT PLOTS
+# ##############################################################################################
+def Plot_Components(array_Y, time,labels=None):
+
+    time_dt = ConvertToDateTime(time)
+    fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True, constrained_layout=True)
+
+    if labels == None:
+        labels = [r'$\Delta X$', r'$\Delta Y$', r'$\Delta Z$']
+
+    Y = [array_Y[:,0], array_Y[:,1], array_Y[:,2]]
+
+    # Pick consistent colors for R,S,W from the current color cycle
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    colors = (colors + colors + colors)[:3]  # ensure at least 3
+
+    for k, ax in enumerate(axes):
+        # Plot all three series; make the current one opaque, others faint
+        for j in range(3):
+            alpha = 1.0 if j == k else 0.50   # 50% opacity for the non-focus series
+            lw    = 1.6 if j == k else 1.0
+            z     = 3 if j == k else 1
+            ax.plot(time_dt, Y[j], color=colors[j], alpha=alpha, lw=lw, zorder=z)
+            if j==k: 
+                m = np.nanmax(np.abs(Y[j]))
+                ax.set_ylim(-1.1*m, 1.1*m)
+
+                #ax.set_ylim(-1.1*min(Y[j]), 1.1*max(Y[j]))
+        
+        ax.set_ylabel(f'{labels[k]} [km]')
+        ax.grid(True, alpha=0.3)
+        
+
+    axes[-1].set_xlabel('Time [Date format]')
+
+    # --- mdates: nice date ticks/labels on the shared x-axis ---
+    locator   = mdates.AutoDateLocator()               # chooses sensible tick spacing
+    formatter = mdates.ConciseDateFormatter(locator)   # compact, smart formatting
+    axes[-1].xaxis.set_major_locator(locator)
+    axes[-1].xaxis.set_major_formatter(formatter)
+
+    # (optional) minor ticks if you want extra granularity:
+    # axes[-1].xaxis.set_minor_locator(mdates.AutoDateLocator(minticks=5, maxticks=12))
+    #fig.suptitle('Residuals in RSW Frame') #, y=0.995)
+    
+    # elif type == "difference":
+    #     fig.suptitle('Difference in Residuals RSW Neptune and SSB') #, y=0.995)
+    
+
+    return fig
 
 
+def Residuals_Magnitude_Compare(residuals, time,
+                                fig=None, ax=None,
+                                label_prefix=None,
+                                line_width=1.6,
+                                overlay_idx=0):
+    """
+    Plot magnitude of residual vectors over time, supporting overlays.
+    residuals : ndarray [N x 3] or [N x m] -> will compute norm across axis=1
+    time      : ndarray of times (float or datetime-like)
+    """
+
+    time_dt = ConvertToDateTime(time)
+
+    created = False
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
+        created = True
+
+    # Compute magnitude
+    mag = np.linalg.norm(residuals, axis=1)
+
+    # ---- NEW: color/linestyle per overlay
+    colors = _overlay_colors(overlay_idx)
+    linestyles = ['solid', '--', '-.', ':']
+    ls = linestyles[overlay_idx % len(linestyles)]
+
+    # Label
+    label = f"{label_prefix} |Δ|" if label_prefix else "|Δ|"
+
+    ax.plot(time_dt, mag,
+            color=colors[0], linestyle=ls,
+            lw=line_width, label=label)
+
+    ax.set_ylabel('‖Δ‖ [km]')
+    ax.set_yscale("log")   # <-- log scale on Y axis
+    ax.grid(True, alpha=0.3)
+
+    if created:
+        ax.set_xlabel('Time')
+        locator   = mdates.AutoDateLocator()
+        formatter = mdates.ConciseDateFormatter(locator)
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(formatter)
+        fig.suptitle('Residual Magnitude')
+
+    ax.legend(loc='upper right')
+
+    return fig, ax
 
 
 # ##############################################################################################

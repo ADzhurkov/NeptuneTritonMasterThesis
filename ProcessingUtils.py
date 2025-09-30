@@ -19,6 +19,15 @@ def format_residual_history(residual_history, obs_times, state_history):
 
     return residuals_per_iteration, rsw_residuals_per_iteration
 
+# def make_array_rsw(array_to_rotate,sim_times,state_history):
+#     res_i = array_to_rotate
+#     reshaped_array = res_i.reshape(-1, 3)
+#     reshaped_array = np.hstack([np.array(sim_times).reshape(-1, 1), reshaped_array])
+
+#     rsw_residuals = rotate_inertial_3_to_rsw(np.array(obs_times).reshape(-1, 1),
+#                                                 reshaped_residuals, state_history)
+
+#     rsw_residuals_per_iteration.append(np.hstack([np.array(obs_times).reshape(-1, 1), rsw_residuals]))
 
 
 def make_rsw_rotation_from_state_history(state_history, size=3):
