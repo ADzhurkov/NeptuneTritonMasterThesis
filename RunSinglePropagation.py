@@ -258,12 +258,18 @@ if __name__ == "__main__":
     settings["acc"] = settings_acc
     settings["prop"] = settings_prop
 
+
+
+    #--------------------------------------------------------------------------------------------
+    # RUN SIM AND SAVE IN FOLDER
+    #--------------------------------------------------------------------------------------------
+
     out_dir = make_timestamped_folder("Results_Step_Size/")
     
     state_history = dict()
     state_history_array = dict()
 
-    step_sizes = [1800*4,1800*2,1800,1800/2,1800/4,1800/8]
+    step_sizes = [1800*16,1800*8,1800*4,1800*2,1800,1800/2]
     label_list = [f"{int(step_sizes[i])}-{int(step_sizes[i+1])}" 
               for i in range(len(step_sizes)-1)]
 
@@ -277,6 +283,12 @@ if __name__ == "__main__":
     np.save(out_dir / "state_history.npy", state_history)
     np.save(out_dir / "state_history_array.npy", state_history_array)
     
+
+
+    #--------------------------------------------------------------------------------------------
+    # PLOTTING
+    #--------------------------------------------------------------------------------------------
+
     fig_compare, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
     
     
@@ -295,7 +307,7 @@ if __name__ == "__main__":
         for epoch in arr1_times:
             arr2_interpolated.append(arr2_interpolator.interpolate(epoch))
 
-        diff = arr1[:,1:] - arr2_interpolated
+        diff = arr2_interpolated - arr1[:,1:]
         
         fig_compare,ax = FigUtils.Residuals_Magnitude_Compare(diff, arr1_times,
                         fig=fig_compare, ax=ax,
@@ -313,3 +325,41 @@ if __name__ == "__main__":
     fig_compare.savefig(out_dir / "Compare_Positions.pdf")
 
 
+
+    #--------------------------------------------------------------------------------------------
+    # Error with respect to lowest timestep
+    #--------------------------------------------------------------------------------------------
+    
+    arr2 = state_history_array[str(step_sizes[-1])]
+    arr2_dict = state_history[str(step_sizes[-1])]
+    
+    arr2_interpolator = math.interpolators.create_one_dimensional_vector_interpolator(
+    arr2_dict, math.interpolators.lagrange_interpolation(8))
+    accumulated_difference = np.zeros(len(step_sizes)-1)
+    for i in range(len(step_sizes)-1):
+        # Grab the state for this array + next
+        arr1 = state_history_array[str(step_sizes[i])]
+        
+
+        arr1_last_time = arr1[-1,0]
+        arr2_interpolated = arr2_interpolator.interpolate(arr1_last_time)
+        diff = arr2_interpolated - arr1[-1,1:]
+        accumulated_difference[i] = np.linalg.norm(diff[0:3])
+
+
+    fig_accumulated, ax_acc = plt.subplots(figsize=(10, 5), constrained_layout=True)
+
+    # Drop the last step size so arrays align
+    ax_acc.plot(step_sizes[:-1], accumulated_difference, marker="o", linestyle="-")
+
+    # Log scale for y-axis
+    ax_acc.set_yscale("log")
+
+    # Labels
+    ax_acc.set_xlabel("Step size [sec]")
+    ax_acc.set_ylabel("Accumulated Difference at Simulation End [m]")
+
+    # Optional: grid for readability
+    ax_acc.grid(True, which="both", alpha=0.3)
+
+    fig_accumulated.savefig(out_dir / "Accumulated_Differences.pdf")

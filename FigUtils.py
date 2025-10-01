@@ -171,7 +171,7 @@ def Residuals_Magnitude_Compare(residuals, time,
             color=colors[0], linestyle=ls,
             lw=line_width, label=label)
 
-    ax.set_ylabel('‖Δ‖ [km]')
+    ax.set_ylabel('difference between 2 step sizes [m]')
     ax.set_yscale("log")   # <-- log scale on Y axis
     ax.grid(True, alpha=0.3)
 
