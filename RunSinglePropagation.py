@@ -273,26 +273,99 @@ if __name__ == "__main__":
     label_list = [f"{int(step_sizes[i])}-{int(step_sizes[i+1])}" 
               for i in range(len(step_sizes)-1)]
 
-    for step_size in step_sizes:
+    # for step_size in step_sizes:
 
-        settings["prop"]["fixed_step_size"] = step_size
-        print("Current Step Size: ",settings["prop"]["fixed_step_size"])
+    #     settings["prop"]["fixed_step_size"] = step_size
+    #     print("Current Step Size: ",settings["prop"]["fixed_step_size"])
         
-        state_history[str(step_size)], state_history_array[str(step_size)] = RunSinglePropagation(settings, out_dir)
+    #     state_history[str(step_size)], state_history_array[str(step_size)] = RunSinglePropagation(settings, out_dir)
 
-    np.save(out_dir / "state_history.npy", state_history)
-    np.save(out_dir / "state_history_array.npy", state_history_array)
+    # np.save(out_dir / "state_history.npy", state_history)
+    # np.save(out_dir / "state_history_array.npy", state_history_array)
+    
+    state_history = np.load("/home/atn/Documents/Year 5/Thesis/Github/NeptuneTritonMasterThesis/Results_Step_Size/10Years/state_history.npy",allow_pickle=True).item()
+    state_history_array = np.load("/home/atn/Documents/Year 5/Thesis/Github/NeptuneTritonMasterThesis/Results_Step_Size/10Years/state_history_array.npy",allow_pickle=True).item()
+
     
 
-
-    #--------------------------------------------------------------------------------------------
+    
+    #--------------------------------------------------------------------------------------------   
     # PLOTTING
     #--------------------------------------------------------------------------------------------
 
     fig_compare, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
     
-    
+    diff_mag = dict()
+    fits = {}
+
     for i in range(len(step_sizes)-1):
+        # Grab the state for this array + next
+        if step_sizes[i] != 3600:
+            continue
+
+        arr1 = state_history_array[str(step_sizes[i])]
+        
+        arr2 = state_history_array[str(step_sizes[i+1])]
+        arr2_dict = state_history[str(step_sizes[i+1])]
+        
+        arr2_interpolator = math.interpolators.create_one_dimensional_vector_interpolator(
+        arr2_dict, math.interpolators.lagrange_interpolation(8))
+
+        arr1_times = arr1[:,0]
+        arr2_interpolated = []
+        for epoch in arr1_times:
+            arr2_interpolated.append(arr2_interpolator.interpolate(epoch))
+
+        diff = arr2_interpolated - arr1[:,1:]
+        diff = diff[:,0:3]
+        fig_compare,ax = FigUtils.Residuals_Magnitude_Compare(diff, arr1_times,
+                        fig=fig_compare, ax=ax,
+                        label_prefix=label_list[i],
+                        overlay_idx=i)
+
+        
+        diff_mag[str(step_sizes[i])] = np.linalg.norm(diff, axis=1)
+
+        
+        label = str(step_sizes[i])
+        time = state_history_array[str(step_sizes[i])][:,0]
+        y = diff_mag[str(step_sizes[i])]
+
+        # Linear regression: y ≈ m*x + b
+        m, b = np.polyfit(time, y, 1)
+        fits[label] = (m, b)
+        print(f"{label}: slope = {m:.3e}, intercept = {b:.3e}")
+        m, b = fits[label]
+        fig_compare,ax = FigUtils.Plot_Polynomial_Fit(m,b,time,fig_compare,ax,label)
+
+        #fig_pos = FigUtils.Plot_Components(diff[:,0:3],arr1_times)
+        #fig_vel = FigUtils.Plot_Components(diff[:,3:],arr1_times)
+        
+        #file_name = str(step_sizes[i])
+        #fig_pos.savefig(out_dir / (file_name + "Positions.pdf"))
+        #fig_vel.savefig(out_dir / (file_name + "Velocities.pdf"))
+      
+    fig_compare.savefig(out_dir / "Compare_Positions.pdf")
+
+
+    state_history = np.load("/home/atn/Documents/Year 5/Thesis/Github/NeptuneTritonMasterThesis/Results_Step_Size/20Years/state_history.npy",allow_pickle=True).item()
+    state_history_array = np.load("/home/atn/Documents/Year 5/Thesis/Github/NeptuneTritonMasterThesis/Results_Step_Size/20Years/state_history_array.npy",allow_pickle=True).item()
+
+    
+
+    
+    #--------------------------------------------------------------------------------------------   
+    # PLOTTING
+    #--------------------------------------------------------------------------------------------
+
+    fig_compare, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
+    
+    diff_mag = dict()
+    fits_next = {}
+    fig_test, ax_test = plt.subplots(figsize=(10, 5), constrained_layout=True)
+    for i in range(len(step_sizes)-1):
+        if step_sizes[i] != 3600:
+            continue
         # Grab the state for this array + next
         arr1 = state_history_array[str(step_sizes[i])]
         
@@ -308,58 +381,80 @@ if __name__ == "__main__":
             arr2_interpolated.append(arr2_interpolator.interpolate(epoch))
 
         diff = arr2_interpolated - arr1[:,1:]
-        
+        diff = diff[:,0:3]
         fig_compare,ax = FigUtils.Residuals_Magnitude_Compare(diff, arr1_times,
                         fig=fig_compare, ax=ax,
                         label_prefix=label_list[i],
                         overlay_idx=i)
 
-
-        fig_pos = FigUtils.Plot_Components(diff[:,0:3],arr1_times)
-        fig_vel = FigUtils.Plot_Components(diff[:,3:],arr1_times)
         
-        file_name = str(step_sizes[i])
+        diff_mag[str(step_sizes[i])] = np.linalg.norm(diff, axis=1)
+
+        
+        label = str(step_sizes[i])
+        time = state_history_array[str(step_sizes[i])][:,0]
+        y = diff_mag[str(step_sizes[i])]
+
+        # Linear regression: y ≈ m*x + b
+        m, b = np.polyfit(time, y, 1)
+        fits_next[label] = (m, b)
+        print(f"{label}: slope = {m:.3e}, intercept = {b:.3e}")
+        
+        fig_compare,ax = FigUtils.Plot_Polynomial_Fit(m,b,time,fig_compare,ax,label)
+        
+        m, b_false = fits[label]
+        fig_compare,ax = FigUtils.Plot_Polynomial_Fit(m,b,time,fig_compare,ax,(label+'10 years'))
+       
+            
+        ax.legend(loc='lower right')
+
+        #fig_pos = FigUtils.Plot_Components(diff[:,0:3],arr1_times)
+        #fig_vel = FigUtils.Plot_Components(diff[:,3:],arr1_times)
+        
+        #file_name = str(step_sizes[i])
         #fig_pos.savefig(out_dir / (file_name + "Positions.pdf"))
         #fig_vel.savefig(out_dir / (file_name + "Velocities.pdf"))
-    
-    fig_compare.savefig(out_dir / "Compare_Positions.pdf")
+      
+    fig_compare.savefig(out_dir / "Compare_Positions_20_Years_polyfit.pdf")
 
 
 
-    #--------------------------------------------------------------------------------------------
-    # Error with respect to lowest timestep
-    #--------------------------------------------------------------------------------------------
+
+
+    # #--------------------------------------------------------------------------------------------
+    # # Error with respect to lowest timestep
+    # #--------------------------------------------------------------------------------------------
     
-    arr2 = state_history_array[str(step_sizes[-1])]
-    arr2_dict = state_history[str(step_sizes[-1])]
+    # arr2 = state_history_array[str(step_sizes[-1])]
+    # arr2_dict = state_history[str(step_sizes[-1])]
     
-    arr2_interpolator = math.interpolators.create_one_dimensional_vector_interpolator(
-    arr2_dict, math.interpolators.lagrange_interpolation(8))
-    accumulated_difference = np.zeros(len(step_sizes)-1)
-    for i in range(len(step_sizes)-1):
-        # Grab the state for this array + next
-        arr1 = state_history_array[str(step_sizes[i])]
+    # arr2_interpolator = math.interpolators.create_one_dimensional_vector_interpolator(
+    # arr2_dict, math.interpolators.lagrange_interpolation(8))
+    # accumulated_difference = np.zeros(len(step_sizes)-1)
+    # for i in range(len(step_sizes)-1):
+    #     # Grab the state for this array + next
+    #     arr1 = state_history_array[str(step_sizes[i])]
         
 
-        arr1_last_time = arr1[-1,0]
-        arr2_interpolated = arr2_interpolator.interpolate(arr1_last_time)
-        diff = arr2_interpolated - arr1[-1,1:]
-        accumulated_difference[i] = np.linalg.norm(diff[0:3])
+    #     arr1_last_time = arr1[-1,0]
+    #     arr2_interpolated = arr2_interpolator.interpolate(arr1_last_time)
+    #     diff = arr2_interpolated - arr1[-1,1:]
+    #     accumulated_difference[i] = np.linalg.norm(diff[0:3])
 
 
-    fig_accumulated, ax_acc = plt.subplots(figsize=(10, 5), constrained_layout=True)
+    # fig_accumulated, ax_acc = plt.subplots(figsize=(10, 5), constrained_layout=True)
 
-    # Drop the last step size so arrays align
-    ax_acc.plot(step_sizes[:-1], accumulated_difference, marker="o", linestyle="-")
+    # # Drop the last step size so arrays align
+    # ax_acc.plot(step_sizes[:-1], accumulated_difference, marker="o", linestyle="-")
 
-    # Log scale for y-axis
-    ax_acc.set_yscale("log")
+    # # Log scale for y-axis
+    # ax_acc.set_yscale("log")
 
-    # Labels
-    ax_acc.set_xlabel("Step size [sec]")
-    ax_acc.set_ylabel("Accumulated Difference at Simulation End [m]")
+    # # Labels
+    # ax_acc.set_xlabel("Step size [sec]")
+    # ax_acc.set_ylabel("Accumulated Difference at Simulation End [m]")
 
-    # Optional: grid for readability
-    ax_acc.grid(True, which="both", alpha=0.3)
+    # # Optional: grid for readability
+    # ax_acc.grid(True, which="both", alpha=0.3)
 
-    fig_accumulated.savefig(out_dir / "Accumulated_Differences.pdf")
+    # fig_accumulated.savefig(out_dir / "Accumulated_Differences.pdf")

@@ -2,8 +2,8 @@ import numpy as np
 import yaml
 
 from tudatpy import numerical_simulation
-from tudatpy.numerical_simulation import environment_setup
-from tudatpy.numerical_simulation import propagation_setup
+from tudatpy.dynamics import environment_setup
+from tudatpy.dynamics import propagation_setup
 import tudatpy.estimation
 from tudatpy.estimation.observable_models_setup import links, model_settings
 from tudatpy.estimation import observations_setup
@@ -316,22 +316,28 @@ def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings,
         parameters_to_estimate_settings.append(parameters_setup.rotation_pole_position('Neptune'))
 
 
-    parameters_to_estimate = parameters_setup.create_parameter_set(parameters_to_estimate_settings,
-                                                                    system_of_bodies,
-                                                                    propagator_settings)
+    parameters_to_estimate = parameters_setup.create_parameter_set(
+        parameters_to_estimate_settings,
+        system_of_bodies,
+        propagator_settings)
 
     original_parameter_vector = parameters_to_estimate.parameter_vector
 
     print('Running propagation...')
 
-    estimator = estimation_analysis.Estimator(system_of_bodies, parameters_to_estimate,
-                                                pseudo_observations_settings, propagator_settings)
+    estimator = estimation_analysis.Estimator(
+        system_of_bodies, 
+        parameters_to_estimate,
+        pseudo_observations_settings,
+        propagator_settings)
 
     convergence_settings = estimation_analysis.estimation_convergence_checker(maximum_iterations=5)
 
     # Create input object for the estimation
-    estimation_input = estimation_analysis.EstimationInput(observations_and_times=pseudo_observations,
-                                                    convergence_checker=convergence_settings)
+    estimation_input = estimation_analysis.EstimationInput(
+        observations_and_times=pseudo_observations,
+        convergence_checker=convergence_settings)
+
     # Set methodological options
     estimation_input.define_estimation_settings(save_state_history_per_iteration=True)
 

@@ -172,7 +172,7 @@ def Residuals_Magnitude_Compare(residuals, time,
             lw=line_width, label=label)
 
     ax.set_ylabel('difference between 2 step sizes [m]')
-    ax.set_yscale("log")   # <-- log scale on Y axis
+    #ax.set_yscale("log")   # <-- log scale on Y axis
     ax.grid(True, alpha=0.3)
 
     if created:
@@ -183,10 +183,16 @@ def Residuals_Magnitude_Compare(residuals, time,
         ax.xaxis.set_major_formatter(formatter)
         fig.suptitle('Residual Magnitude')
 
-    ax.legend(loc='upper right')
+    ax.legend(loc='lower right')
 
     return fig, ax
 
+def Plot_Polynomial_Fit(m,b,time,fig,ax,label):
+    
+    time_dt = ConvertToDateTime(time)
+    ax.plot(time_dt, m*time + b, "--", label=f"{label} trend")
+
+    return fig,ax
 
 # ##############################################################################################
 # # RESIDUALS RSW can compare
