@@ -1,0 +1,68 @@
+env:
+  start_epoch: 209952000.0
+  end_epoch: 210470400.0
+  bodies: &id001
+  - Sun
+  - Jupiter
+  - Saturn
+  - Neptune
+  - Triton
+  - Uranus
+  - Mercury
+  - Venus
+  - Mars
+  - Earth
+  global_frame_origin: Earth
+  global_frame_orientation: ECLIPJ2000
+  interpolator_triton_cadance: 480
+  neptune_extended_gravity: Jacobson2009
+acc:
+  bodies_to_propagate: &id002
+  - Triton
+  central_bodies: &id003
+  - Neptune
+  bodies_to_simulate: *id001
+  bodies: *id001
+  neptune_extended_gravity: Jacobson2009
+  accelerations_cfg:
+    target: Triton
+    accelerations:
+      Sun:
+      - type: point_mass_gravity
+      Jupiter:
+      - type: point_mass_gravity
+      Saturn:
+      - type: point_mass_gravity
+      Neptune:
+      - type: point_mass_gravity
+      - type: spherical_harmonic_gravity_Jacobson_2009
+        degree: 4
+        order: 0
+      Uranus:
+      - type: point_mass_gravity
+      Mercury:
+      - type: point_mass_gravity
+      Venus:
+      - type: point_mass_gravity
+      Mars:
+      - type: point_mass_gravity
+      Earth:
+      - type: point_mass_gravity
+prop:
+  start_epoch: 209952000.0
+  end_epoch: 210470400.0
+  bodies_to_propagate: *id002
+  central_bodies: *id003
+  global_frame_orientation: ECLIPJ2000
+  fixed_step_size: 1800
+obs:
+  mode:
+  - pos
+  bodies:
+  - - Triton
+    - Neptune
+  cadence: 10800
+  type: Real
+est:
+  est_parameters:
+  - initial_state
