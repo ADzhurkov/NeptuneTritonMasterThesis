@@ -36,7 +36,7 @@ def observatory_info (Observatory): #Positive to north and east
         Observatory = '0' + Observatory
     elif len(Observatory) == 1:                   #Making sure 098 and 98 are the same
         Observatory = '00' + Observatory
-    with open('Observatories.txt', 'r') as file:    #https://www.projectpluto.com/obsc.htm, https://www.projectpluto.com/mpc_stat.txt
+    with open('Observations/Observatories.txt', 'r') as file:    #https://www.projectpluto.com/obsc.htm, https://www.projectpluto.com/mpc_stat.txt
         lines = file.readlines()
         for line in lines[1:]:  # Ignore the first line
             columns = line.split()

@@ -1,0 +1,50 @@
+ABS 	data_type       	    #ABS (absolute), REL (tangential), DIF (differential coorinates) or CPV (camera pointing vector)
+Triton 	moon_entry         	    #Target body
+0		time_entry             	#First time entry
+3		amount_time_entries  	#Amount of time entries
+DATE	time_type          	    #JD, MJD, J2000, DATE, MINsinceJDaddingtheJD
+utc		time_scale		        #time scale,lower case
+0		time_delta          	#hours away from standard time scale (i.e. utc-3 is -3)
+3		RA_entry           	    #First RA or X entry
+6		DEC_entry             	#First DEC or Y entry
+1		number_observatories  	#Amount of observatories, needs extra definition which one if 1
+327		observatory       	    #Ignored if more than 1 observatory
+0		observatory_entrace	    #Ignored if 1 observatory
+8		relative_body_entry  	#Ignored if ABS, can either be a name or entry position
+False	process_relative        #Switch for processing relative observations or not
+J2000   Epoch of equinox        #J2000, B1950
+Neptune central_body            #name or number
+2006 08 29.528044 21 21 20.0011 -15 41 28.897
+2006 08 29.541481 21 21 19.9244 -15 41 29.111
+2006 08 29.544676 21 21 19.8991 -15 41 29.139
+2006 08 29.585706 21 21 19.6502 -15 41 29.773
+2006 08 29.587789 21 21 19.6325 -15 41 29.746
+2006 08 29.590567 21 21 19.6167 -15 41 29.888
+2006 08 29.625394 21 21 19.3982 -15 41 30.315
+2006 08 29.627488 21 21 19.3958 -15 41 30.361
+2006 08 29.647731 21 21 19.2689 -15 41 30.584
+2006 08 29.656250 21 21 19.2257 -15 41 30.756
+2006 08 29.658843 21 21 19.2123 -15 41 30.835
+2006 08 30.619051 21 21 14.0410 -15 41 45.622
+2006 08 30.621782 21 21 14.0328 -15 41 45.662
+2006 08 30.623854 21 21 14.0152 -15 41 45.670
+2006 08 30.650949 21 21 13.8844 -15 41 46.229
+2006 08 30.653727 21 21 13.8687 -15 41 46.232
+2006 08 30.657894 21 21 13.8433 -15 41 46.282
+2006 08 30.690579 21 21 13.6833 -15 41 47.078
+2006 08 30.693356 21 21 13.6579 -15 41 47.106
+2006 08 31.512095 21 21  9.7200 -15 42  8.219
+2006 08 31.518345 21 21  9.6809 -15 42  8.428
+2006 08 31.520428 21 21  9.6708 -15 42  8.426
+2006 08 31.559329 21 21  9.4806 -15 42  9.671
+2006 08 31.561400 21 21  9.4637 -15 42  9.756
+2006 08 31.563484 21 21  9.4516 -15 42  9.873
+2006 08 31.612789 21 21  9.2042 -15 42 11.447
+2006 08 31.614873 21 21  9.1960 -15 42 11.539
+2006 08 31.619039 21 21  9.1698 -15 42 11.726
+2006 08 31.665579 21 21  8.9379 -15 42 13.340
+2006 08 31.668345 21 21  8.9219 -15 42 13.413
+2006 08 31.671817 21 21  8.9054 -15 42 13.465
+2006 08 31.715567 21 21  8.6794 -15 42 14.850
+2006 08 31.719039 21 21  8.6639 -15 42 15.113
+2006 08 31.721123 21 21  8.6548 -15 42 15.067

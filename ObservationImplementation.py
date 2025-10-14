@@ -39,7 +39,13 @@ import sys
 from pathlib import Path
 
 # Add parent directory to Python path
-sys.path.append(str(Path(__file__).resolve().parent.parent))
+#sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+# Get the path to the directory containing this file
+current_dir = Path(__file__).resolve().parent
+
+# Append the HelperFunctions directory
+sys.path.append(str(current_dir / "HelperFunctions"))
 
 import ProcessingUtils
 import PropFuncs
@@ -61,8 +67,8 @@ def main(settings: dict,out_dir):
     # Path to the current script
     current_dir = Path(__file__).resolve().parent
 
-    # Kernel folder is one level above
-    kernel_folder = current_dir.parent / "Kernels"
+    # Kernel folder 
+    kernel_folder = "Kernels" #current_dir.parent / 
 
    #kernel_folder = "/Kernels/"
     kernel_paths=[
@@ -104,7 +110,7 @@ def main(settings: dict,out_dir):
         observations,observations_settings = PropFuncs.make_relative_position_pseudo_observations(
             simulation_start_epoch,simulation_end_epoch, system_of_bodies, settings)
     elif settings["obs"]["type"] == "Real":
-        observations,observations_settings = ObsFunc.LoadObservations("ObservationsProcessedTest",system_of_bodies)
+        observations,observations_settings = ObsFunc.LoadObservations("Observations/ObservationsProcessedTest",system_of_bodies)
     else:
         print("No Observation type selected")
     ##############################################################################################
