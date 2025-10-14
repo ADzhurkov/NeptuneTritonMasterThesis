@@ -68,7 +68,7 @@ def LoadObservations(folder_path,system_of_bodies):
         Moon = split_string[0]
         Observatory = split_string[1]
         # Define the position of the observatory on Earth
-        observatory_longitude, observatory_latitude, observatory_altitude = observatory_info (Observatory)
+        observatory_longitude, observatory_latitude, observatory_altitude = observatory_info(Observatory)
 
         # Add the ground station to the environment
         environment_setup.add_ground_station(
@@ -82,7 +82,8 @@ def LoadObservations(folder_path,system_of_bodies):
         #Reading observational data from file
         ObservationList = []
         Timelist = []
-        uncer = []
+        uncertainty_ra = []
+        uncertainty_dec = []
         with open(file, 'r') as f:
             csv_reader = csv.reader(f)
             next(csv_reader) 
@@ -96,7 +97,8 @@ def LoadObservations(folder_path,system_of_bodies):
                 Timelist.append(time)
                 obstimes.append(time)
                 ObservationList.append(np.asarray([float(row[1]), float(row[2])]))
-
+                uncertainty_ra.append(float(row[3]))
+                uncertainty_dec.append(float(row[4]))
         
         angles = ObservationList
         times = Timelist

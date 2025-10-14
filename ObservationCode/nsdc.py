@@ -4,6 +4,7 @@ import inspect
 import csv
 import numpy as np
 import datetime
+import matplotlib
 from matplotlib import pyplot as plt
 from math import *
 from astropy.time import Time
@@ -25,6 +26,7 @@ import tudatpy.estimation
 #from HorizonsLoad import jpl_horizons_ephemeris_table 
 from tudatpy.astro import time_representation, element_conversion
 
+matplotlib.use("PDF") 
 ############################################################################################
 ###########################       SUPPORTING FUNCTIONS     #################################
 ############################################################################################
@@ -41,7 +43,8 @@ def nsdc_moon_name(moon_id):
         511: 'Carme',
         512: 'Ananke',
         513: 'Leda',
-        514: 'Thebe'
+        514: 'Thebe',
+        801: 'Triton'
     }
 
     if moon_id in moon_names:
@@ -562,7 +565,7 @@ def analyse_nsdc_data(times,observations, moons, observatories, bodies, plotting
         plt.show()       
     return means, stddevs, diflist 
 
-def remove_nsdc_outliers(times, observations, moons, observatories, bodies,standard_orientation, outlier_limit = 3, plotting= True):
+def remove_nsdc_outliers(times, observations, moons, observatories, bodies,standard_orientation, outlier_limit = 3, plotting= False):
     '''
     Removing outliers from the dataset
 
@@ -630,17 +633,22 @@ def remove_nsdc_outliers(times, observations, moons, observatories, bodies,stand
     print('Means:', means, 'Stddevs:', stddevs)
 
     if plotting == True:
-        plt.scatter(filtered_times,np.asarray(filtered_diflist)[:,0])
-        plt.xlabel('Observation epoch [years since J2000]')
-        plt.ylabel('spice-observed RA [rad]')
-        plt.grid()
-        plt.show()
+        fig, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
 
-        plt.scatter(filtered_times,np.asarray   (filtered_diflist)[:,1])
-        plt.xlabel('Observation epoch [years since J2000]')
-        plt.ylabel('spice-observed DEC [rad]')
-        plt.grid()
-        plt.show()    
+        ax.scatter(filtered_times,np.asarray(filtered_diflist)[:,0])
+        ax.set_xlabel('Observation epoch [years since J2000]')
+        ax.set_ylabel('spice-observed RA [rad]')
+        ax.grid(True, alpha=0.3)
+        fig.savefig("SPICE_Residuals/RA_residuals.pdf")
+
+        fig, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
+
+        ax.scatter(filtered_times,np.asarray   (filtered_diflist)[:,1])
+        ax.set_xlabel('Observation epoch [years since J2000]')
+        ax.set_ylabel('spice-observed DEC [rad]')
+        ax.grid(True, alpha=0.3)
+        fig.savefig("SPICE_Residuals/DEC_residuals.pdf")
+   
     return filtered_times, filtered_observations, filtered_moons, filtered_observatories, filtered_diflist, max(rms), means, stddevs
 
 #Rotation functions
@@ -1055,11 +1063,8 @@ def generate_standard_nsdc_environment(central_body, standard_orientation, extra
 
     Returns
     -----------
-    RA_ECLIPJ2000: float
-        absolute right ascension of the requested body
-    DEC_ECLIPJ2000: float
-        absolute declination of the requested body
-
+    bodies: Tudat object: system of bodies
+        a tudat object of system of bodies
     '''    
     common_bodies = ["Sun", "Earth",central_body]
     print('Loading the standard', central_body, 'environment.')

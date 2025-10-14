@@ -45,6 +45,7 @@ import ProcessingUtils
 import PropFuncs
 import FigUtils
 import ObsFunc
+import nsdc
 
 matplotlib.use("PDF")  #tkagg
 
@@ -97,13 +98,15 @@ def main(settings: dict,out_dir):
     propagator_settings = PropFuncs.Create_Propagator_Settings(settings_prop,acceleration_models)
 
     ##############################################################################################
-    # CREATE PSEUDO OBSERVATIONS 
+    # CREATE PSEUDO OBSERVATIONS OR LOAD REAL OBSERVATIONS
     ##############################################################################################
-
-    pseudo_observations, pseudo_observations_settings = PropFuncs.make_relative_position_pseudo_observations(
-        simulation_start_epoch,simulation_end_epoch, system_of_bodies, settings)
-
-    observations,observations_settings = ObsFunc.LoadObservations("ObservationsProcessedTest",system_of_bodies)
+    if settings["obs"]["type"] == "Simulated":
+        observations,observations_settings = PropFuncs.make_relative_position_pseudo_observations(
+            simulation_start_epoch,simulation_end_epoch, system_of_bodies, settings)
+    elif settings["obs"]["type"] == "Real":
+        observations,observations_settings = ObsFunc.LoadObservations("ObservationsProcessedTest",system_of_bodies)
+    else:
+        print("No Observation type selected")
     ##############################################################################################
     # CREATE & RUN ESTIMATOR  
     ##############################################################################################
@@ -136,7 +139,7 @@ def main(settings: dict,out_dir):
         spice.get_body_cartesian_state_at_epoch(
             target_body_name="Triton",
             observer_body_name="Neptune",
-            reference_frame_name="J2000",
+            reference_frame_name="ECLIPJ2000",
             aberration_corrections="NONE",
             ephemeris_time=epoch
         )
@@ -148,74 +151,105 @@ def main(settings: dict,out_dir):
     # RESIDUALS JONAS
     ##############################################################################################
 
-    residuals_j2000, residuals_rsw = ProcessingUtils.format_residual_history(estimation_output.residual_history,
-                                                                pseudo_observations.get_concatenated_observation_times(),
-                                                                state_history)
+    #residuals_j2000, residuals_rsw = ProcessingUtils.format_residual_history(estimation_output.residual_history,
+    #                                                            observations.get_concatenated_observation_times(),
+    #                                                            state_history)
 
+    residual_history = ProcessingUtils.format_residual_history_abs_astrometric(
+        estimation_output.residual_history,
+        observations.get_concatenated_observation_times()
+    )
 
+    observation_times = observations.get_concatenated_observation_times()
+    uncertainty_ra = residual_history[-1][:,1]
+    uncertainty_dec = residual_history[-1][:,2]
+    uncertainty_ra_arcseconds = 180/np.pi * 3600 * uncertainty_ra
+    uncertainty_dec_arcseconds = 180/np.pi * 3600 * uncertainty_dec
+    
+    ##############################################################################################
+    # RESIDUALS RA / DEC
+    ##############################################################################################
+
+    observation_times_DateFormat = FigUtils.ConvertToDateTime(observation_times)
+
+    #--------------------------------------------------------------------------------
+    fig_RA, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
+    ax.scatter(observation_times_DateFormat,uncertainty_ra_arcseconds)
+    ax.set_xlabel('Observation epoch [years since ECLIPJ2000]')
+    ax.set_ylabel('simulated-observed RA [arcseconds]')
+    ax.grid(True, alpha=0.3)
+
+    locator   = mdates.AutoDateLocator()               # chooses sensible tick spacing
+    formatter = mdates.ConciseDateFormatter(locator)   # compact, smart formatting
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+
+    #fig.savefig("SPICE_Residuals/RA_residuals_mine.pdf")
+
+    #--------------------------------------------------------------------------------
+    fig_DEC, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
+    ax.scatter(observation_times_DateFormat,uncertainty_dec_arcseconds)
+    ax.set_xlabel('Observation epoch [years since ECLIPJ2000]')
+    ax.set_ylabel('simulated-observed DEC [arcseconds]')
+    ax.grid(True, alpha=0.3)
+
+    locator   = mdates.AutoDateLocator()               # chooses sensible tick spacing
+    formatter = mdates.ConciseDateFormatter(locator)   # compact, smart formatting
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
 
 
     ##############################################################################################
     # PLOTTING
     ##############################################################################################
     
-    residuals_j2000_final = residuals_j2000[-1][:,1:4]/1e3
-    residauls_rsw_final_time = residuals_rsw[-1][:,0]
-    residuals_rsw_final = residuals_rsw[-1][:,1:4]/1e3
+    #residuals_j2000_final = residuals_j2000[-1][:,1:4]/1e3
+    #residauls_rsw_final_time = residuals_rsw[-1][:,0]
+    #residuals_rsw_final = residuals_rsw[-1][:,1:4]/1e3
     
-    residuals_rsw_fig = FigUtils.Residuals_RSW(residuals_rsw_final, residauls_rsw_final_time)
+    #residuals_rsw_fig = FigUtils.Residuals_RSW(residuals_rsw_final, residauls_rsw_final_time)
 
     #-------------------------------------------------------------------------------
-    rms_fig = FigUtils.Residuals_RMS(residuals_j2000)
+    #rms_fig = FigUtils.Residuals_RMS(residuals_j2000)
 
+    # #--------------------------------------------------------------------------
+    # #Get Different Flavors of FFTs
+    # #--------------------------------------------------------------------------
+    # #Get Triton Mean Motion
+    # kep = dep_vars_array[:, 10:16]  # [a, e, i, ω, Ω, ν]
+    # a = kep[:, 0]                   # meters
+    # # GM values (Tudat):
+    # mu_N = spice.get_body_gravitational_parameter("Neptune")
+    # mu_T = spice.get_body_gravitational_parameter("Triton")
+    # mu = mu_N + mu_T               
+    # # Mean motion time series (rad/s) 
+    # n_series = np.sqrt(mu / a**3)
+    # n_med = np.nanmedian(n_series)  # one way to take the mean of the mean motion
+    # f_rot_hz = 1/(n_med / (2*np.pi)) #  T (seconds)
 
-    #Get Triton Mean Motion
-    kep = dep_vars_array[:, 10:16]  # [a, e, i, ω, Ω, ν]
-    a = kep[:, 0]                   # meters
+    # fft_fig_Jonas = FigUtils.create_fft_residual_figure(residuals_rsw[-1],f_rot_hz)
 
-    # GM values (Tudat):
-    mu_N = spice.get_body_gravitational_parameter("Neptune")
-    mu_T = spice.get_body_gravitational_parameter("Triton")
-    mu = mu_N + mu_T               
-
-    # Mean motion time series (rad/s) 
-    n_series = np.sqrt(mu / a**3)
-    n_med = np.nanmedian(n_series)  # one way to take the mean of the mean motion
-
-    f_rot_hz = 1/(n_med / (2*np.pi)) #  T (seconds)
-    
-    #--------------------------------------------------------------------------
-    #Get Different Flavors of FFTs
-    #--------------------------------------------------------------------------
-    fft_fig_Jonas = FigUtils.create_fft_residual_figure(residuals_rsw[-1],f_rot_hz)
-    
-    fft_fig_Welch = FigUtils.psd_rsw(residuals_rsw[-1],1/f_rot_hz) 
-    #fft_fig3 = FigUtils.psd_rsw(residuals_rsw[-1],1/f_rot_hz,type='ASD')
-    
-    fft_fig_PSD_no_detrend = FigUtils.periodogram_rsw(residuals_rsw[-1],1/f_rot_hz,detrend=False)                       
-    fft_fig_PSD_linear_detrend = FigUtils.periodogram_rsw(residuals_rsw[-1],1/f_rot_hz,detrend='linear') 
-    fft_fig_Spectrum = FigUtils.periodogram_rsw(residuals_rsw[-1],1/f_rot_hz,mode='spectrum')
+    # fft_fig_Spectrum = FigUtils.periodogram_rsw(residuals_rsw[-1],1/f_rot_hz,mode='spectrum')
 
 
     ##############################################################################################
     # SAVE FIGS AND WRITE TO FILE
     ##############################################################################################
-    
-    residuals_rsw_fig.savefig(out_dir / "Residuals_RSW.pdf")
-    rms_fig.savefig(out_dir / "rms.pdf")
-    #Orbit_3D_fig.savefig(out_dir / "Orbit_3D.pdf")
-    fft_fig_Jonas.savefig(out_dir / "fft_Jonas.pdf")
-    fft_fig_Welch.savefig(out_dir / "fft_Welch.pdf")
-    fft_fig_PSD_no_detrend.savefig(out_dir / "fft_no_detrend.pdf")
-    fft_fig_PSD_linear_detrend.savefig(out_dir / "fft_linear_detrend.pdf")
-    fft_fig_Spectrum.savefig(out_dir / "fft_spectrum.pdf")
-    #----------------------------------------------------------------------------------------------
-    # Save residuals as numpy files
-    arr = np.stack(residuals_rsw, axis=0)   # shape (5, 254, 4)
-    np.save(out_dir / "residuals_rsw.npy", arr)
 
-    arr2 = np.stack(residuals_j2000,axis=0)
-    np.save(out_dir / "residuals_j2000.npy", arr2)
+    fig_RA.savefig(out_dir / "RA_res.pdf")
+    fig_DEC.savefig(out_dir / "DEC_res.pdf")
+    # rms_fig.savefig(out_dir / "rms.pdf")
+    # #Orbit_3D_fig.savefig(out_dir / "Orbit_3D.pdf")
+    # fft_fig_Jonas.savefig(out_dir / "fft_Jonas.pdf")
+
+    # fft_fig_Spectrum.savefig(out_dir / "fft_spectrum.pdf")
+    # #----------------------------------------------------------------------------------------------
+    # # Save residuals as numpy files
+    # arr = np.stack(residuals_rsw, axis=0)   # shape (5, 254, 4)
+    # np.save(out_dir / "residuals_rsw.npy", arr)
+
+    # arr2 = np.stack(residuals_j2000,axis=0)
+    # np.save(out_dir / "residuals_j2000.npy", arr2)
     
 
 
@@ -235,10 +269,10 @@ def make_timestamped_folder(base_path="Results"):
 if __name__ == "__main__":
         
     # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
-    simulation_start_epoch = DateTime(2006, 7,  10).epoch()
-    simulation_end_epoch   = DateTime(2006, 9, 11).epoch()
-    global_frame_origin = 'SSB'
-    global_frame_orientation = 'J2000'
+    simulation_start_epoch = DateTime(2006, 8,  27).epoch()
+    simulation_end_epoch   = DateTime(2006, 9, 2).epoch()
+    global_frame_origin = 'Earth'
+    global_frame_orientation = 'ECLIPJ2000'
 
     #--------------------------------------------------------------------------------------------
     # ENVIORONMENT SETTINGS 
@@ -288,7 +322,7 @@ if __name__ == "__main__":
     settings_obs["mode"] = ["pos"]
     settings_obs["bodies"] = [("Triton", "Neptune")]                           # bodies to observe
     settings_obs["cadence"] = 60*60*3 # Every 3 hours
-
+    settings_obs["type"] = "Real" # Simulated or Real observations
     #--------------------------------------------------------------------------------------------
     # OBSERVATION SETTINGS 
     #--------------------------------------------------------------------------------------------

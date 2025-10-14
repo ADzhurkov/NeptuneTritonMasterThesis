@@ -33,7 +33,7 @@ def Create_Env(settings_dict):
 
     body_settings.get("Triton").ephemeris_settings = environment_setup.ephemeris.interpolated_spice(
         start_epoch-100*30, end_epoch+100*30, interpolator_triton_cadance, 
-        'Neptune', global_frame_orientation)
+        'SSB', global_frame_orientation)
 
 
     ## Neptune 
@@ -67,7 +67,7 @@ def Create_Env(settings_dict):
 
 
     # set parameters for defining the rotation between frames
-    original_frame = "J2000"
+    original_frame = global_frame_orientation
     target_frame = "IAU_Neptune"
     target_frame_spice = "IAU_Neptune"
    
@@ -331,7 +331,7 @@ def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings,
         pseudo_observations_settings,
         propagator_settings)
 
-    convergence_settings = estimation_analysis.estimation_convergence_checker(maximum_iterations=5)
+    convergence_settings = estimation_analysis.estimation_convergence_checker(maximum_iterations=3)
 
     # Create input object for the estimation
     estimation_input = estimation_analysis.EstimationInput(

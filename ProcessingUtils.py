@@ -3,10 +3,22 @@ from tudatpy.astro import frame_conversion
 from tudatpy import util,math
 import numpy as np
 
+def format_residual_history_abs_astrometric(residual_history, obs_times):
+    residuals_per_iteration = []
+
+    for i in range(residual_history.shape[1]):
+        res_i = residual_history[:, i]
+        reshaped_residuals = res_i.reshape(-1, 2)
+        residuals_per_iteration.append(np.hstack([np.array(obs_times).reshape(-1, 1), reshaped_residuals]))
+
+    return residuals_per_iteration
+
+
+
 def format_residual_history(residual_history, obs_times, state_history):
     residuals_per_iteration = []
-    rsw_residuals_per_iteration = []
 
+    rsw_residuals_per_iteration = []
     for i in range(residual_history.shape[1]):
         res_i = residual_history[:, i]
         reshaped_residuals = res_i.reshape(-1, 3)
