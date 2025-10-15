@@ -33,7 +33,7 @@ def Create_Env(settings_dict):
 
     body_settings.get("Triton").ephemeris_settings = environment_setup.ephemeris.interpolated_spice(
         start_epoch-100*30, end_epoch+100*30, interpolator_triton_cadance, 
-        'SSB', global_frame_orientation)
+        global_frame_origin, global_frame_orientation)
 
 
     ## Neptune 
@@ -78,7 +78,9 @@ def Create_Env(settings_dict):
     body_settings.get("Neptune").ephemeris_settings = environment_setup.ephemeris.direct_spice(
         global_frame_origin, global_frame_orientation)
 
-
+    body_settings.get("Earth").ephemeris_settings = environment_setup.ephemeris.direct_spice(
+        global_frame_origin, global_frame_orientation)
+    
     # # Create system of selected bodies
     bodies = environment_setup.create_system_of_bodies(body_settings)
     
@@ -331,7 +333,7 @@ def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings,
         pseudo_observations_settings,
         propagator_settings)
 
-    convergence_settings = estimation_analysis.estimation_convergence_checker(maximum_iterations=3)
+    convergence_settings = estimation_analysis.estimation_convergence_checker(maximum_iterations=2)
 
     # Create input object for the estimation
     estimation_input = estimation_analysis.EstimationInput(

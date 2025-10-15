@@ -127,7 +127,7 @@ def observatory_info(Observatory):
         Observatory = '0' + Observatory
     elif len(Observatory) == 1:                   #Making sure 098 and 98 are the same
         Observatory = '00' + Observatory
-    with open('Observatories.txt', 'r') as file:    #https://www.projectpluto.com/obsc.htm, https://www.projectpluto.com/mpc_stat.txt
+    with open('Observations/Observatories.txt', 'r') as file:    #https://www.projectpluto.com/obsc.htm, https://www.projectpluto.com/mpc_stat.txt
         lines = file.readlines()
         for line in lines[1:]:  # Ignore the first line
             columns = line.split()
@@ -989,7 +989,7 @@ def add_observatory(bodies,observatory):       #Generate ephemerides for the obs
         element_conversion.geodetic_position_type)
     return
 
-def get_angle_rel_body(epoch,orientation,observatory_ephemerides, relative_body, standard_orientation):                          #Returns the absolute angular position of the relative body from an observatory
+def get_angle_rel_body(epoch,orientation,observatory_ephemerides, relative_body, standard_orientation,global_frame_origin = "Earth"):                          #Returns the absolute angular position of the relative body from an observatory
     '''
     Retrieve the absolute angular position of a body, for example the reference body in relative observations or a reference ephemeris from spice    
 
@@ -1025,7 +1025,12 @@ def get_angle_rel_body(epoch,orientation,observatory_ephemerides, relative_body,
     '''    
     #Relative body from spice, from observer, in spherical coordinates
     position = spice.get_body_cartesian_state_at_epoch(relative_body,"Earth",orientation,'LT',epoch.epoch())
-    position_correction = observatory_ephemerides.cartesian_state(epoch.epoch())
+    if global_frame_origin == "Earth":
+        position_correction = observatory_ephemerides.cartesian_state(epoch.epoch())
+    elif global_frame_origin == "SSB":
+        position_correction = observatory_ephemerides.cartesian_state(epoch.epoch()) - spice.get_body_cartesian_state_at_epoch("Earth","SSB",orientation,"None",epoch.epoch())
+    else:
+        print("Unsuported global frame origin: ",global_frame_origin)
     rot_mat = spice.compute_rotation_matrix_between_frames(standard_orientation,orientation,epoch.epoch())
     position_corrected = position-np.concatenate([rot_mat@position_correction[:3],rot_mat@position_correction[3:]])
     spherical = element_conversion.cartesian_to_spherical(position_corrected) 
@@ -1435,8 +1440,11 @@ def process_nsdc_file(filename,analyse, standard_orientation):
             moons.append(body)
             observatories.append(observatory)
     times, RADEC, moons, observatories, diflist, rms, means, stddevs = remove_nsdc_outliers(times, RADEC, moons, observatories, bodies,standard_orientation, 3, analyse)
-    if (abs(means[0]) < stddevs[0] and abs(means[1]) <stddevs[1]):
-        save_nsdc_data_to_csv(times, RADEC, moons, observatories, studyname, diflist, 'ObservationsProcessedTest/')
+    #if (abs(means[0]) < stddevs[0] and abs(means[1]) <stddevs[1]):
+    print("Generating csv file: ",studyname)
+    save_nsdc_data_to_csv(times, RADEC, moons, observatories, studyname, diflist, 'Observations/ObservationsProcessedTest/')
+    # else:
+    #     print("Did not make cvs file of: ",studyname)
     return
 
 # #Loading states from spice, both most common and a full set of Jupiter satellites

@@ -59,6 +59,8 @@ def LoadObservations(folder_path,system_of_bodies):
 
     #Start loop over every csv in folder
     for file in raw_observation_files:
+        # if file != 'Observations/ObservationsProcessedTest/Triton_327_nm0082.csv':
+        #     continue
         arc_start_times_local = []
         bias_values_local = []
         #Reading information from file name

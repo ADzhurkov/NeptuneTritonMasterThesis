@@ -1,3 +1,19 @@
+ABS 	data_type       	    #ABS (absolute), REL (tangential), DIF (differential coorinates) or CPV (camera pointing vector)
+Triton 	moon_entry         	    #Target body
+0		time_entry             	#First time entry
+3		amount_time_entries  	#Amount of time entries
+DATE	time_type          	    #JD, MJD, J2000, DATE, MINsinceJDaddingtheJD
+utc		time_scale		        #time scale,lower case
+0		time_delta          	#hours away from standard time scale (i.e. utc-3 is -3)
+3		RA_entry           	    #First RA or X entry
+6		DEC_entry             	#First DEC or Y entry
+2		number_observatories  	#Amount of observatories, needs extra definition which one if 1
+327		observatory       	    #Ignored if more than 1 observatory
+9		observatory_entrace	    #Ignored if 1 observatory
+8		relative_body_entry  	#Ignored if ABS, can either be a name or entry position
+False	process_relative        #Switch for processing relative observations or not
+J2000   Epoch of equinox        #J2000, B1950
+Neptune central_body            #name or number
 2007 8  8.6352777 21 32 36.10300 -14 52  8.170 327
 2007 8  8.6401307 21 32 36.06800 -14 52  8.490 327
 2007 8  8.6429157 21 32 36.05100 -14 52  8.580 327

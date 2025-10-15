@@ -75,7 +75,7 @@ def main(settings: dict,out_dir):
         "pck00010.tpc",
         "gm_de440.tpc",
         "nep097.bsp",     
-        "nep105.bsp",
+        #"nep105.bsp",
         "naif0012.tls"
         ]
 
@@ -138,7 +138,7 @@ def main(settings: dict,out_dir):
     ##############################################################################################
 
     fixed_step_size = settings_prop["fixed_step_size"]
-
+    
     # Get Triton's state relative to Neptune SPICE
     epochs = np.arange(simulation_start_epoch, simulation_end_epoch+60*5, fixed_step_size ) #test_settings_obs["cadence"]
     states_SPICE = np.array([
@@ -229,7 +229,9 @@ def main(settings: dict,out_dir):
             str(327),
             system_of_bodies
             )
-            RA_spice, DEC_spice = nsdc.get_angle_rel_body(DateTime.from_epoch(observation_times[i]),'ECLIPJ2000',observatory_ephemerides, "Triton",'ECLIPJ2000')
+
+
+            RA_spice, DEC_spice = nsdc.get_angle_rel_body(DateTime.from_epoch(observation_times[i]),'ECLIPJ2000',observatory_ephemerides, "Triton",'ECLIPJ2000',global_frame_origin=global_frame_origin)
             RA, DEC = reshaped_observations_list[i]
             diflist.append([RA-RA_spice,DEC-DEC_spice])
         diflist = np.array(diflist)
@@ -265,12 +267,20 @@ def main(settings: dict,out_dir):
         fig.savefig(out_dir / "DEC_residuals_SPICE.pdf")
 
 
+        #--------------------------------------------------------------------------------
+        # Extract the time column (first column)
+        time_column = state_history_array[:, [0]]   # keep it 2D (shape = (289, 1))
 
+        # Concatenate along columns
+        states_SPICE_with_time = np.hstack((time_column, states_SPICE))
 
+        fig_Cartesian = FigUtils.PlotCartesianDifference(state_history_array, states_SPICE_with_time)
+        fig_Cartesian.savefig(out_dir / "Cartesian_Difference_SPICE.pdf")
         #--------------------------------------------------------------------------------
         #save figs
         fig_RA.savefig(out_dir / "RA_res.pdf")
         fig_DEC.savefig(out_dir / "DEC_res.pdf")
+        
     
     elif settings['obs']['type'] == 'Simulated':
         print("Saving simulated observations residuals...")
@@ -346,9 +356,9 @@ def make_timestamped_folder(base_path="Results"):
 if __name__ == "__main__":
         
     # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
-    simulation_start_epoch = DateTime(2006, 8,  27).epoch()
-    simulation_end_epoch   = DateTime(2006, 9, 2).epoch()
-    global_frame_origin = 'Earth'
+    simulation_start_epoch = DateTime(1963, 3,  4).epoch() #2006, 8,  27
+    simulation_end_epoch   = DateTime(2019, 10, 1).epoch()   #2006, 9, 2
+    global_frame_origin = 'SSB'
     global_frame_orientation = 'ECLIPJ2000'
 
     #--------------------------------------------------------------------------------------------
@@ -357,7 +367,7 @@ if __name__ == "__main__":
     settings_env = dict()
     settings_env["start_epoch"] = simulation_start_epoch
     settings_env["end_epoch"] = simulation_end_epoch
-    settings_env["bodies"] = ['Sun','Jupiter', 'Saturn','Neptune','Triton','Uranus','Mercury','Venus','Mars','Earth']
+    settings_env["bodies"] = ['Sun','Jupiter', 'Saturn','Neptune','Triton','Uranus','Mercury','Venus','Mars','Earth'] #
     settings_env["global_frame_origin"] = global_frame_origin
     settings_env["global_frame_orientation"] = global_frame_orientation
     settings_env["interpolator_triton_cadance"] = 60*8
@@ -370,10 +380,10 @@ if __name__ == "__main__":
     settings_acc = dict()
     settings_acc['bodies_to_propagate'] = ['Triton']
     settings_acc['central_bodies'] = ['Neptune']
-    settings_acc['bodies_to_simulate'] = settings_env["bodies"]
+    settings_acc['bodies_to_simulate'] = ['Sun','Jupiter', 'Saturn','Neptune','Triton','Uranus','Mercury','Venus','Mars','Earth'] 
     settings_acc['bodies'] = settings_env["bodies"]
 
-    settings_acc['neptune_extended_gravity'] = "Jacobson2009"
+    settings_acc['neptune_extended_gravity'] =  "Jacobson2009"
 
 
     accelerations_cfg = PropFuncs.build_acceleration_config(settings_acc)
@@ -389,7 +399,7 @@ if __name__ == "__main__":
     settings_prop['bodies_to_propagate'] = settings_acc['bodies_to_propagate'] 
     settings_prop['central_bodies'] = settings_acc['central_bodies']
     settings_prop['global_frame_orientation'] = settings_env["global_frame_orientation"]
-    settings_prop['fixed_step_size'] = 60*30 # 30 minutes
+    settings_prop['fixed_step_size'] = 60*60*4 # 30 minutes
   
     #--------------------------------------------------------------------------------------------
     # OBSERVATION SETTINGS 

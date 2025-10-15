@@ -689,9 +689,42 @@ def add_special_tick_at(ax, x0, decimals=2, emphasize=True, color="gray", space_
                 txt.set_color(color)
                 break
 
+# ##############################################################################################
+# # CARTESIAN DIFFERENCE
+# ##############################################################################################
 
+def PlotCartesianDifference(state_history_array1, state_history_array2, time_seconds=None):
+    """
+    Plot the difference in Cartesian position components between two state histories.
+    """
+    # --- Extract time
+    time_dt = ConvertToDateTime(state_history_array1[:, 0] )
 
+    # --- Extract positions (in km)
+    r1_km = state_history_array1[:, 1:4] / 1e3
+    r2_km = state_history_array2[:, 1:4] / 1e3
 
+    # --- Compute differences
+    diff = r1_km - r2_km  # Δx, Δy, Δz in km
+
+    # --- Plot setup
+    fig, ax = plt.subplots(3, 1, figsize=(9, 7), sharex=True)
+    labels = ['Δx [km]', 'Δy [km]', 'Δz [km]']
+
+    for i in range(3):
+        ax[i].plot(time_dt, diff[:, i])
+        ax[i].set_ylabel(labels[i])
+        ax[i].grid(True)
+
+    #ax[-1].set_xlabel('Time [hours]')
+    fig.suptitle('Cartesian Component Differences vs Time', fontsize=14)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    ax[-1].set_xlabel('Time')
+    locator   = mdates.AutoDateLocator()
+    formatter = mdates.ConciseDateFormatter(locator)
+    ax[-1].xaxis.set_major_locator(locator)
+    ax[-1].xaxis.set_major_formatter(formatter)
+    return fig
 # ##############################################################################################
 # # 3D PLOT
 # ##############################################################################################
