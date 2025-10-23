@@ -104,13 +104,17 @@ def main(settings: dict,out_dir):
     propagator_settings = PropFuncs.Create_Propagator_Settings(settings_prop,acceleration_models)
 
     ##############################################################################################
-    # CREATE PSEUDO OBSERVATIONS OR LOAD REAL OBSERVATIONS
+    # CREATE PSEUDO OR LOAD REAL OBSERVATIONS
     ##############################################################################################
     if settings["obs"]["type"] == "Simulated":
         observations,observations_settings = PropFuncs.make_relative_position_pseudo_observations(
             simulation_start_epoch,simulation_end_epoch, system_of_bodies, settings)
     elif settings["obs"]["type"] == "Real":
-        observations,observations_settings = ObsFunc.LoadObservations("Observations/ObservationsProcessedTest",system_of_bodies)
+        
+        files = settings["obs"]["files"]
+
+        observations,observations_settings,Observatories = ObsFunc.LoadObservations("Observations/ObservationsProcessedTest",system_of_bodies,files)
+        print("Observatories: ",Observatories)
     else:
         print("No Observation type selected")
     ##############################################################################################
@@ -140,7 +144,7 @@ def main(settings: dict,out_dir):
     fixed_step_size = settings_prop["fixed_step_size"]
     
     # Get Triton's state relative to Neptune SPICE
-    epochs = np.arange(simulation_start_epoch, simulation_end_epoch+60*5, fixed_step_size ) #test_settings_obs["cadence"]
+    epochs = state_history_array[:,0]  #np.arange(simulation_start_epoch, simulation_end_epoch+60*5, fixed_step_size ) #test_settings_obs["cadence"]
     states_SPICE = np.array([
         spice.get_body_cartesian_state_at_epoch(
             target_body_name="Triton",
@@ -159,6 +163,7 @@ def main(settings: dict,out_dir):
 
     if settings['obs']['type'] == 'Real':
         print("Saving real observations residuals...")
+        
         residual_history = ProcessingUtils.format_residual_history_abs_astrometric(
             estimation_output.residual_history,
             observations.get_concatenated_observation_times()
@@ -166,120 +171,59 @@ def main(settings: dict,out_dir):
 
         observation_times = observations.get_concatenated_observation_times()
         
-        uncertainty_ra_initial = residual_history[0][:,1]
-        uncertainty_dec_initial = residual_history[0][:,2]
+        residuals_ra_initial = residual_history[0][:,1]
+        residuals_dec_initial = residual_history[0][:,2]
         
-        uncertainty_ra_initial_arcseconds = 180/np.pi * 3600 * uncertainty_ra_initial
-        uncertainty_dec_initial_arcseconds = 180/np.pi * 3600 * uncertainty_dec_initial
+        residuals_ra_initial_arcseconds = 180/np.pi * 3600 * residuals_ra_initial
+        residuals_dec_initial_arcseconds = 180/np.pi * 3600 * residuals_dec_initial
         
 
-        uncertainty_ra = residual_history[-1][:,1]
-        uncertainty_dec = residual_history[-1][:,2]
-        uncertainty_ra_arcseconds = 180/np.pi * 3600 * uncertainty_ra
-        uncertainty_dec_arcseconds = 180/np.pi * 3600 * uncertainty_dec
+        residuals_ra = residual_history[-1][:,1]
+        residuals_dec = residual_history[-1][:,2]
+        residuals_ra_arcseconds = 180/np.pi * 3600 * residuals_ra
+        residuals_dec_arcseconds = 180/np.pi * 3600 * residuals_dec
         
         ##############################################################################################
         # RESIDUALS RA / DEC
         ##############################################################################################
 
         observation_times_DateFormat = FigUtils.ConvertToDateTime(observation_times)
+                
+        residuals = ObsFunc.Get_SPICE_residual_from_observations(observations,Observatories,system_of_bodies)
+        residuals_RA_SPICE = residuals[0]
+        residuals_DEC_SPICE = residuals[1]
 
-        #--------------------------------------------------------------------------------
-        fig_RA, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
-        ax.scatter(observation_times_DateFormat,uncertainty_ra_arcseconds,label='final')
-        ax.scatter(observation_times_DateFormat,uncertainty_ra_initial_arcseconds,label='initial')
-        
-        ax.set_xlabel('Observation epoch [years since ECLIPJ2000]')
-        ax.set_ylabel('simulated-observed RA [arcseconds]')
-        ax.grid(True, alpha=0.3)
+        fig_estimation_residuals = FigUtils.plot_RA_DEC_residuals(
+            observation_times_DateFormat,
+            residuals_ra_arcseconds,
+            residuals_ra_initial_arcseconds,
+            residuals_dec_arcseconds,
+            residuals_dec_initial_arcseconds)
 
-        locator   = mdates.AutoDateLocator()               # chooses sensible tick spacing
-        formatter = mdates.ConciseDateFormatter(locator)   # compact, smart formatting
-        ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(formatter)
-        ax.legend(loc='lower right')
-
-        #fig.savefig("SPICE_Residuals/RA_residuals_mine.pdf")
-
-        #--------------------------------------------------------------------------------
-        fig_DEC, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
-        ax.scatter(observation_times_DateFormat,uncertainty_dec_arcseconds,label='final')
-        ax.scatter(observation_times_DateFormat,uncertainty_dec_initial_arcseconds,label='initial')
-        
-        ax.set_xlabel('Observation epoch [years since ECLIPJ2000]')
-        ax.set_ylabel('simulated-observed DEC [arcseconds]')
-        ax.grid(True, alpha=0.3)
-
-        locator   = mdates.AutoDateLocator()               # chooses sensible tick spacing
-        formatter = mdates.ConciseDateFormatter(locator)   # compact, smart formatting
-        ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(formatter)
-
-        ax.legend(loc='lower right')
-
-        #----------------------------------------------------------------------------------
-        #Check with SPICE
-        observations_list = observations.get_concatenated_observations()
-        reshaped_observations_list = observations_list.reshape(-1, 2)
-        
-        diflist = []
-        for i in range(len(reshaped_observations_list)):
-            observatory_ephemerides = environment_setup.create_ground_station_ephemeris(
-            system_of_bodies.get_body("Earth"),
-            str(327),
-            system_of_bodies
-            )
-
-
-            RA_spice, DEC_spice = nsdc.get_angle_rel_body(DateTime.from_epoch(observation_times[i]),'ECLIPJ2000',observatory_ephemerides, "Triton",'ECLIPJ2000',global_frame_origin=global_frame_origin)
-            RA, DEC = reshaped_observations_list[i]
-            diflist.append([RA-RA_spice,DEC-DEC_spice])
-        diflist = np.array(diflist)
-        uncertainty_ra_SPICE = diflist[:,0] * 180/np.pi * 3600 
-        uncertainty_dec_SPICE = diflist[:,1] * 180/np.pi * 3600 
-            
-        fig, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
-        ax.scatter(observation_times_DateFormat,uncertainty_ra_SPICE)
-        ax.set_xlabel('Observation epoch [years since J2000]')
-        ax.set_ylabel('spice-observed RA [arcseconds]')
-        ax.grid(True, alpha=0.3)
-
-        locator   = mdates.AutoDateLocator()               # chooses sensible tick spacing
-        formatter = mdates.ConciseDateFormatter(locator)   # compact, smart formatting
-        ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(formatter)
-
-        fig.savefig(out_dir / "RA_residuals_SPICE.pdf")
-
-        #--------------------------------------------------------------------------------
-        fig, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
-        ax.scatter(observation_times_DateFormat,uncertainty_dec_SPICE)
-        ax.set_xlabel('Observation epoch [years since J2000]')
-        ax.set_ylabel('spice-observed DEC [arcseconds]')
-        ax.grid(True, alpha=0.3)
-
-        locator   = mdates.AutoDateLocator()               # chooses sensible tick spacing
-        formatter = mdates.ConciseDateFormatter(locator)   # compact, smart formatting
-        ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(formatter)
-
-
-        fig.savefig(out_dir / "DEC_residuals_SPICE.pdf")
+        labels = ['final','SPICE']
+        fig_SPICE_residuals = FigUtils.plot_RA_DEC_residuals(
+            observation_times_DateFormat,
+            residuals_ra_arcseconds,
+            residuals_RA_SPICE,
+            residuals_dec_arcseconds,
+            residuals_DEC_SPICE,
+            labels)
 
 
         #--------------------------------------------------------------------------------
         # Extract the time column (first column)
         time_column = state_history_array[:, [0]]   # keep it 2D (shape = (289, 1))
-
-        # Concatenate along columns
         states_SPICE_with_time = np.hstack((time_column, states_SPICE))
 
         fig_Cartesian = FigUtils.PlotCartesianDifference(state_history_array, states_SPICE_with_time)
-        fig_Cartesian.savefig(out_dir / "Cartesian_Difference_SPICE.pdf")
+        
         #--------------------------------------------------------------------------------
         #save figs
-        fig_RA.savefig(out_dir / "RA_res.pdf")
-        fig_DEC.savefig(out_dir / "DEC_res.pdf")
+        fig_Cartesian.savefig(out_dir / "Cartesian_Difference_SPICE.pdf")
+        fig_estimation_residuals.savefig(out_dir / "Estimation_residual.pdf")
+        fig_SPICE_residuals.savefig(out_dir / "SPICE_residual.pdf")
+        #fig_RA.savefig(out_dir / "RA_res.pdf")
+        #fig_DEC.savefig(out_dir / "DEC_res.pdf")
         
     
     elif settings['obs']['type'] == 'Simulated':
@@ -356,8 +300,10 @@ def make_timestamped_folder(base_path="Results"):
 if __name__ == "__main__":
         
     # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
-    simulation_start_epoch = DateTime(1963, 3,  4).epoch() #2006, 8,  27
-    simulation_end_epoch   = DateTime(2019, 10, 1).epoch()   #2006, 9, 2
+    simulation_start_epoch = DateTime(1996, 1,  1).epoch() #2006, 8,  27 1963, 3,  4  
+    simulation_end_epoch   = DateTime(2021, 1, 1).epoch()   #2006, 9, 2 2019, 10, 1
+    
+    simulation_initial_epoch = DateTime(2007, 1, 1).epoch()
     global_frame_origin = 'SSB'
     global_frame_orientation = 'ECLIPJ2000'
 
@@ -395,7 +341,7 @@ if __name__ == "__main__":
     settings_prop = dict()
     settings_prop['start_epoch'] = settings_env["start_epoch"]
     settings_prop['end_epoch'] = settings_env["end_epoch"]
-
+    settings_prop['initial_epoch'] = simulation_initial_epoch
     settings_prop['bodies_to_propagate'] = settings_acc['bodies_to_propagate'] 
     settings_prop['central_bodies'] = settings_acc['central_bodies']
     settings_prop['global_frame_orientation'] = settings_env["global_frame_orientation"]
@@ -410,6 +356,7 @@ if __name__ == "__main__":
     settings_obs["bodies"] = [("Triton", "Neptune")]                           # bodies to observe
     settings_obs["cadence"] = 60*60*3 # Every 3 hours
     settings_obs["type"] = "Real" # Simulated or Real observations
+    settings_obs["files"] = ["Triton_286_nm0084.csv","Triton_337_nm0088.csv","Triton_673_nm0079"] #"Triton_337_nm0088.csv","Triton_689_nm0078.csv","Triton_689_nm0077.csv","Triton_689_nm0007.csv"]
     #--------------------------------------------------------------------------------------------
     # OBSERVATION SETTINGS 
     #--------------------------------------------------------------------------------------------
@@ -417,7 +364,7 @@ if __name__ == "__main__":
     settings_est = dict()
     #settings_est['pseudo_observations_settings'] = pseudo_observations_settings
     #settings_est['pseudo_observations'] = pseudo_observations
-    settings_est['est_parameters'] = ['initial_state'] #, 'Rotation_Pole_Position_Neptune']
+    settings_est['est_parameters'] = ['initial_state','Rotation_Pole_Position_Neptune'] #, 'Rotation_Pole_Position_Neptune']
 
 
     
@@ -431,7 +378,7 @@ if __name__ == "__main__":
 
 
 
-    main(settings,make_timestamped_folder("Results/RealObservationsTest"))
+    main(settings,make_timestamped_folder("Results/SelectedAbsObservationsOctober"))
 
 
     #path_list = ["PoleOrientation/SimpleRotationModel/residuals_rsw.npy","PoleOrientation/EstimationSimpleRotationModel/residuals_rsw.npy"]

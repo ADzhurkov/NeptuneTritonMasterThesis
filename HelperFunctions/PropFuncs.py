@@ -78,9 +78,15 @@ def Create_Env(settings_dict):
     body_settings.get("Neptune").ephemeris_settings = environment_setup.ephemeris.direct_spice(
         global_frame_origin, global_frame_orientation)
 
-    body_settings.get("Earth").ephemeris_settings = environment_setup.ephemeris.direct_spice(
-        global_frame_origin, global_frame_orientation)
-    
+    # body_settings.get("Earth").ephemeris_settings = environment_setup.ephemeris.direct_spice(
+    #     global_frame_origin, global_frame_orientation)
+        
+    precession_nutation_theory = environment_setup.rotation_model.IAUConventions.iau_2006
+    #original_frame = "J2000"
+    # create rotation model settings and assign to body settings of "Earth"
+    body_settings.get( "Earth" ).rotation_model_settings = environment_setup.rotation_model.gcrs_to_itrs(
+    precession_nutation_theory, global_frame_orientation)
+
     # # Create system of selected bodies
     bodies = environment_setup.create_system_of_bodies(body_settings)
     
@@ -195,6 +201,7 @@ def Create_Propagator_Settings(settings_dict,acceleration_models):
 
     simulation_start_epoch = settings_dict['start_epoch'] 
     simulation_end_epoch   = settings_dict['end_epoch']
+    simulation_initial_epoch = settings_dict['initial_epoch']
     bodies_to_propagate = settings_dict['bodies_to_propagate'][0]
     central_bodies = settings_dict['central_bodies'][0]
     global_frame_orientation = settings_dict['global_frame_orientation']
@@ -208,7 +215,7 @@ def Create_Propagator_Settings(settings_dict,acceleration_models):
         observer_body_name     = central_bodies,
         reference_frame_name   = global_frame_orientation,
         aberration_corrections = "none",
-        ephemeris_time         = simulation_start_epoch,
+        ephemeris_time         = simulation_initial_epoch,
     )
 
     #TODO Arrange this better and make expandable
@@ -223,7 +230,11 @@ def Create_Propagator_Settings(settings_dict,acceleration_models):
 
 
     # Create termination settings
-    termination_condition = propagation_setup.propagator.time_termination(simulation_end_epoch)
+    termination_condition_end = propagation_setup.propagator.time_termination(simulation_end_epoch)
+
+    termination_condition_start = propagation_setup.propagator.time_termination(simulation_start_epoch)
+
+    termination_settings = propagation_setup.propagator.non_sequential_termination(termination_condition_end,termination_condition_start)
 
     # Create numerical integrator settings
     #fixed_step_size = Time(60*30) # 30 minutes
@@ -236,9 +247,9 @@ def Create_Propagator_Settings(settings_dict,acceleration_models):
         acceleration_models,
         [bodies_to_propagate],
         initial_state,
-        simulation_start_epoch,
+        simulation_initial_epoch,
         integrator_settings,
-        termination_condition,
+        termination_settings,
         output_variables=dependent_variables_to_save
     )
     return propagator_settings
@@ -333,7 +344,7 @@ def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings,
         pseudo_observations_settings,
         propagator_settings)
 
-    convergence_settings = estimation_analysis.estimation_convergence_checker(maximum_iterations=2)
+    convergence_settings = estimation_analysis.estimation_convergence_checker(maximum_iterations=5)
 
     # Create input object for the estimation
     estimation_input = estimation_analysis.EstimationInput(

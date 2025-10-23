@@ -875,3 +875,65 @@ def Compare_RSW_Different_Solutions(path_list,label_list):
     return fig, fig_diff
     #fig.savefig("Residuals_RSW_Comparison_SSB.pdf")
     #fig_diff.savefig("Difference_Residuals_RSW_Neptune_SSB.pdf")
+
+
+
+# ##############################################################################################
+# # REAL OBSERVATIONS
+# ##############################################################################################
+
+
+def plot_RA_DEC_residuals(observation_times_DateFormat,
+                          uncertainty_ra_arcseconds,
+                          uncertainty_ra_initial_arcseconds,
+                          uncertainty_dec_arcseconds,
+                          uncertainty_dec_initial_arcseconds,
+                          labels=["final","initial"],
+                          save_path=None):
+    """
+    Plot initial and finall RA and DEC residuals side by side.
+
+    Parameters
+    ----------
+    observation_times_DateFormat : array-like of datetime
+    uncertainty_ra_arcseconds : array-like
+    uncertainty_ra_initial_arcseconds : array-like
+    uncertainty_dec_arcseconds : array-like
+    uncertainty_dec_initial_arcseconds : array-like
+    save_path : str or None, optional
+        If provided, saves the figure to this path (e.g. 'SPICE_Residuals/RA_DEC_residuals.pdf')
+    """
+
+
+
+
+    fig, ax = plt.subplots(1, 2, figsize=(14, 5), constrained_layout=True, sharex=True)
+
+    # --- RA plot ---
+    ax[0].scatter(observation_times_DateFormat, uncertainty_ra_arcseconds, label=labels[0])
+    ax[0].scatter(observation_times_DateFormat, uncertainty_ra_initial_arcseconds, label=labels[1])
+    ax[0].set_xlabel('Observation epoch [years since ECLIPJ2000]')
+    ax[0].set_ylabel('simulated - observed RA [arcseconds]')
+    ax[0].grid(True, alpha=0.3)
+    ax[0].legend(loc='lower right')
+
+    locator   = mdates.AutoDateLocator()
+    formatter = mdates.ConciseDateFormatter(locator)
+    ax[0].xaxis.set_major_locator(locator)
+    ax[0].xaxis.set_major_formatter(formatter)
+
+    # --- DEC plot ---
+    ax[1].scatter(observation_times_DateFormat, uncertainty_dec_arcseconds, label=labels[0])
+    ax[1].scatter(observation_times_DateFormat, uncertainty_dec_initial_arcseconds, label=labels[1])
+    ax[1].set_xlabel('Observation epoch [years since ECLIPJ2000]')
+    ax[1].set_ylabel('simulated - observed DEC [arcseconds]')
+    ax[1].grid(True, alpha=0.3)
+    ax[1].legend(loc='lower right')
+
+    ax[1].xaxis.set_major_locator(locator)
+    ax[1].xaxis.set_major_formatter(formatter)
+    
+    if save_path:
+        fig.savefig(save_path, bbox_inches='tight')
+
+    return fig

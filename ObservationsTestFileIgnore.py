@@ -1,3 +1,6 @@
+# General imports
+#import math
+
 import os
 import yaml
 import numpy as np
@@ -7,17 +10,22 @@ import matplotlib.dates as mdates
 import datetime as dt
 from datetime import datetime
 from pathlib import Path
-import csv
 
 # tudatpy imports
 from tudatpy import math
 from tudatpy import constants
+
 from tudatpy.interface import spice
 from tudatpy.numerical_simulation import environment_setup
 from tudatpy.numerical_simulation import propagation_setup
-import tudatpy.estimation as estimation
+import tudatpy.estimation
 from tudatpy import util
-from tudatpy.estimation.observable_models_setup import links, model_settings
+#import tudatpy.estimation_setup
+
+#from tudatpy.numerical_simulation import estimation
+
+#from tudatpy.numerical_simulation import estimation_setup #,Time
+
 
 from tudatpy import numerical_simulation
 
@@ -30,9 +38,16 @@ from tudatpy.data import save2txt
 import sys
 from pathlib import Path
 
+
+import pandas as pd
+
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
 # Get the path to the directory containing this file
 current_dir = Path(__file__).resolve().parent
 
+# Append the HelperFunctions directory
 sys.path.append(str(current_dir / "HelperFunctions"))
 
 import ProcessingUtils
@@ -41,114 +56,20 @@ import FigUtils
 import ObsFunc
 import nsdc
 
-def observatory_info (Observatory): #Positive to north and east
-    if len(Observatory) == 2:                   #Making sure 098 and 98 are the same
-        Observatory = '0' + Observatory
-    elif len(Observatory) == 1:                   #Making sure 098 and 98 are the same
-        Observatory = '00' + Observatory
-    with open('Observations/Observatories.txt', 'r') as file:    #https://www.projectpluto.com/obsc.htm, https://www.projectpluto.com/mpc_stat.txt
-        lines = file.readlines()
-        for line in lines[1:]:  # Ignore the first line
-            columns = line.split()
-            if columns[1] == Observatory:
-                longitude = float(columns[2])
-                latitude = float(columns[3])
-                altitude = float(columns[4])
-                return np.deg2rad(longitude),  np.deg2rad(latitude), altitude
-        print('No matching Observatory found')
-
-def LoadObservations(folder_path,system_of_bodies,files='None'):
-    
-    #folder_path = 'ObservationsProcessed/CurrentProcess'
-    if files == 'None':
-        raw_observation_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.csv')]
-    else:
-        #print("Taking from list: ",files)
-        raw_observation_files = [os.path.join(folder_path,f) for f in os.listdir(folder_path) if f in files]
-        print('raw observations selected: ',raw_observation_files)
-    
-
-    obstimes = []
-    observation_set_list = []
-    observation_settings_list = []
-    Observatories = []
-
-    #Start loop over every csv in folder
-    for file in raw_observation_files:
-        # if file != 'Observations/ObservationsProcessedTest/Triton_327_nm0082.csv':
-        #     continue
-        arc_start_times_local = []
-        bias_values_local = []
-        #Reading information from file name
-        string_to_split = file.split("/")[-1]
-        split_string = string_to_split.split("_")
-
-        Moon = split_string[0]
-        Observatory = split_string[1]
-        # Define the position of the observatory on Earth
-        observatory_longitude, observatory_latitude, observatory_altitude = observatory_info(Observatory)
-
-        # Add the ground station to the environment
-        environment_setup.add_ground_station(
-        system_of_bodies.get_body("Earth"),
-        Observatory,
-        [observatory_altitude, observatory_latitude, observatory_longitude],
-        element_conversion.geodetic_position_type)
+matplotlib.use("PDF")  #tkagg
 
 
 
-        #Reading observational data from file
-        ObservationList = []
-        Timelist = []
-        uncertainty_ra = []
-        uncertainty_dec = []
-        with open(file, 'r') as f:
-            csv_reader = csv.reader(f)
-            next(csv_reader) 
+#--------------------------------------------------------------------------------------------
+# FUNCTIONS
+#--------------------------------------------------------------------------------------------
 
-            arc_times = []
-            arc_uncertainties_ra = []
-            arc_uncertainties_dec = []
-
-            for row in csv_reader:
-                time = float(row[0])
-                Timelist.append(time)
-                obstimes.append(time)
-                ObservationList.append(np.asarray([float(row[1]), float(row[2])]))
-                uncertainty_ra.append(float(row[3]))
-                uncertainty_dec.append(float(row[4]))
-        
-        angles = ObservationList
-        times = Timelist
-
-        
-        # Define link ends
-        link_ends = dict()                  #To change
-        link_ends[links.transmitter] = links.body_origin_link_end_id("Triton")
-        link_ends[links.receiver] = links.body_reference_point_link_end_id("Earth", str(Observatory))
-        link_definition = links.LinkDefinition(link_ends)
-
-
-        # Create observation set 
-        observation_set_list.append( estimation.observations.single_observation_set(
-            model_settings.angular_position_type, 
-            link_definition,
-            angles,
-            times, 
-            links.LinkEndType.receiver #observation.receiver 
-        ))
-
-        observation_settings_list.append(model_settings.angular_position(link_definition))
-        Observatories.append(Observatory)
-    
-    
-    observations = estimation.observations.ObservationCollection(observation_set_list) 
-    
-    return observations,observation_settings_list,Observatories
-
-
-
-
+#Make a folder and extract folder path
+def make_timestamped_folder(base_path="Results"):
+    folder_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    full_path = Path(base_path) / folder_name
+    full_path.mkdir(parents=True, exist_ok=True)
+    return full_path
 
 def Get_SPICE_residual_from_observations(observations,Observatories,system_of_bodies):
     observation_times_all = observations.get_observation_times()
@@ -173,7 +94,7 @@ def Get_SPICE_residual_from_observations(observations,Observatories,system_of_bo
             )
 
 
-            RA_spice, DEC_spice = nsdc.get_angle_rel_body(DateTime.from_epoch(observation_times[i]),'ECLIPJ2000',observatory_ephemerides, "Triton",'ECLIPJ2000',global_frame_origin="SSB")
+            RA_spice, DEC_spice = nsdc.get_angle_rel_body(DateTime.from_epoch(observation_times[i]),'ECLIPJ2000',observatory_ephemerides, "Triton",'ECLIPJ2000',global_frame_origin=global_frame_origin)
             RA, DEC = reshaped_observations_list[i]
             diflist.append([RA-RA_spice,DEC-DEC_spice])
 
@@ -325,3 +246,96 @@ def PlotResidualsTime(observations,Observatories,system_of_bodies,output_folder)
 
 
 
+
+##############################################################################################
+# LOAD SPICE KERNELS
+##############################################################################################
+
+from pathlib import Path
+
+# Path to the current script
+current_dir = Path(__file__).resolve().parent
+
+# Kernel folder 
+kernel_folder = "Kernels" #current_dir.parent / 
+
+#kernel_folder = "/Kernels/"
+kernel_paths=[
+    "pck00010.tpc",
+    "gm_de440.tpc",
+    "nep097.bsp",     
+    "nep105.bsp",
+    "naif0012.tls"
+    ]
+
+spice.load_standard_kernels()
+
+# Load your kernels
+for k in kernel_paths:
+    spice.load_kernel(os.path.join(kernel_folder, k))
+
+
+
+##############################################################################################
+# CREATE ENVIRONMENT  
+##############################################################################################
+
+# Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
+simulation_start_epoch = DateTime(1987, 8,  29).epoch()
+simulation_end_epoch   = DateTime(2006, 9, 1).epoch()
+global_frame_origin = 'SSB'
+global_frame_orientation = 'ECLIPJ2000'
+
+#--------------------------------------------------------------------------------------------
+# ENVIORONMENT SETTINGS 
+#--------------------------------------------------------------------------------------------
+settings_env = dict()
+settings_env["start_epoch"] = simulation_start_epoch
+settings_env["end_epoch"] = simulation_end_epoch
+settings_env["bodies"] = ['Sun','Jupiter', 'Saturn','Neptune','Triton','Uranus','Mercury','Venus','Mars','Earth']
+settings_env["global_frame_origin"] = global_frame_origin
+settings_env["global_frame_orientation"] = global_frame_orientation
+settings_env["interpolator_triton_cadance"] = 60*8
+settings_env["neptune_extended_gravity"] = "Jacobson2009"
+
+
+body_settings,system_of_bodies = PropFuncs.Create_Env(settings_env)
+
+
+#--------------------------------------------------------------------------------------------
+# EXTRACT OBSERVATIONS
+#--------------------------------------------------------------------------------------------
+folder_path = "Observations/ObservationsProcessedTest"
+files = os.listdir(folder_path) #['Triton_119_nm0017.csv'] 
+
+files = ["Triton_337_nm0088.csv","Triton_755_nm0081.csv","Triton_689_nm0078.csv","Triton_689_nm0077.csv","Triton_689_nm0007.csv"]
+
+#for f in files: 
+observations,observations_settings,Observatories = ObsFunc.LoadObservations("Observations/ObservationsProcessedTest",system_of_bodies,files)
+
+observation_times =  observations.get_observation_times()
+
+
+output_folder = "Observations/Figures/Selected" #+ f.split(".")[0]
+
+output_folder_path = make_timestamped_folder(output_folder)
+
+
+
+#--------------------------------------------------------------------------------------------
+# PLOTS
+#--------------------------------------------------------------------------------------------
+PlotCountHistogram(observation_times,output_folder_path,bin_type="Count")
+
+PlotResidualsTime(observations,Observatories,system_of_bodies,output_folder_path)
+
+residuals = Get_SPICE_residual_from_observations(observations,Observatories,system_of_bodies)
+
+# #210127288.1842448
+# observatory_ephemerides = environment_setup.create_ground_station_ephemeris(
+# system_of_bodies.get_body("Earth"),
+# str(327),
+# system_of_bodies
+# )
+# orientation = settings_env["global_frame_orientation"]
+# RA_relative, DEC_relative = nsdc.get_angle_rel_body(t,orientation,observatory_ephemerides,"Triton", orientation,global_frame_origin)
