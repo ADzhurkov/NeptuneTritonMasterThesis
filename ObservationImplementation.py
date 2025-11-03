@@ -3,6 +3,7 @@
 
 import os
 import yaml
+import json
 import numpy as np
 import matplotlib
 from matplotlib import pyplot as plt
@@ -113,8 +114,12 @@ def main(settings: dict,out_dir):
         
         files = settings["obs"]["files"]
 
-        observations,observations_settings,Observatories = ObsFunc.LoadObservations("Observations/ObservationsProcessedTest",system_of_bodies,files)
-        print("Observatories: ",Observatories)
+        observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,files)
+        Observatories = []
+        for id in observation_set_ids:
+            Observatory =  id.split("_")[0]
+            Observatories.append(Observatory)
+        print("observation_set_ids: ",observation_set_ids)
     else:
         print("No Observation type selected")
     ##############################################################################################
@@ -133,6 +138,9 @@ def main(settings: dict,out_dir):
 
     state_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.state_history_float
     state_history_array = util.result2array(state_history)
+
+    state_history_initial = estimation_output.simulation_results_per_iteration[0].dynamics_results.state_history_float
+    state_history_initial_array = util.result2array(state_history_initial)
 
     dep_vars_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.dependent_variable_history
     dep_vars_array = util.result2array(dep_vars_history)
@@ -169,19 +177,24 @@ def main(settings: dict,out_dir):
             observations.get_concatenated_observation_times()
         )
 
+        # residual_history_arcseconds = residual_history
+        # for i in range(np.shape(residual_history)[0]):
+        #     #residual_history_arcseconds.append(residual_history[i])
+        #     residual_history_arcseconds[i][:,1:] = residual_history_arcseconds[i][:,1:]*3600 * 180/np.pi
+        
+        residual_history_arcseconds = [
+        np.column_stack([arr[:,0], arr[:,1:] * 3600 * 180/np.pi]) 
+        for arr in residual_history
+        ]
+
         observation_times = observations.get_concatenated_observation_times()
         
-        residuals_ra_initial = residual_history[0][:,1]
-        residuals_dec_initial = residual_history[0][:,2]
-        
-        residuals_ra_initial_arcseconds = 180/np.pi * 3600 * residuals_ra_initial
-        residuals_dec_initial_arcseconds = 180/np.pi * 3600 * residuals_dec_initial
-        
 
-        residuals_ra = residual_history[-1][:,1]
-        residuals_dec = residual_history[-1][:,2]
-        residuals_ra_arcseconds = 180/np.pi * 3600 * residuals_ra
-        residuals_dec_arcseconds = 180/np.pi * 3600 * residuals_dec
+        residuals_ra_initial_arcseconds = residual_history_arcseconds[0][:,1]
+        residuals_dec_initial_arcseconds = residual_history_arcseconds[0][:,2]
+        
+        residuals_ra_arcseconds = residual_history_arcseconds[-1][:,1]
+        residuals_dec_arcseconds = residual_history_arcseconds[-1][:,2]
         
         ##############################################################################################
         # RESIDUALS RA / DEC
@@ -217,14 +230,68 @@ def main(settings: dict,out_dir):
 
         fig_Cartesian = FigUtils.PlotCartesianDifference(state_history_array, states_SPICE_with_time)
         
+
+        fig_rms = FigUtils.Residuals_RMS(residual_history_arcseconds)
+
+
+        states_SPICE_RSW = ProcessingUtils.rotate_inertial_3_to_rsw(time_column, states_SPICE[:,0:3], state_history_array)
+        states_sim_RSW = []
+        states_sim_RSW.append(ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_initial_array[:,1:4], state_history_array))
+        states_sim_RSW.append(ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_array[:,1:4], state_history_array))
+
+        diff_sim_RSW = (states_sim_RSW[0] - states_sim_RSW[-1])/1e3
+        diff_sim_SPICE_RSW = (states_sim_RSW[0] - states_SPICE_RSW)/1e3
+        diff_final_sim_SPICE_RSW = (states_sim_RSW[-1] - states_SPICE_RSW)/1e3
+
+        fig_sim_RSW = FigUtils.Residuals_RSW(diff_sim_RSW, time_column,type="difference",title="RSW Difference Initial Final")
+        fig_sim_SPICE_rsw = FigUtils.Residuals_RSW(diff_sim_SPICE_RSW, time_column,type="difference",title="RSW Difference Initial SPICE")
+        fig_final_sim_SPICE_rsw = FigUtils.Residuals_RSW(diff_final_sim_SPICE_RSW, time_column,type="difference",title="RSW Difference Final SPICE")
+            
+        fig_sim_RSW_abs = FigUtils.Residuals_RSW(states_sim_RSW[-1], time_column,type="normal",title="RSW Final Simulation Absolute")
+        fig_SPICE_RSW_abs = FigUtils.Residuals_RSW(states_SPICE_RSW, time_column,type="normal",title="RSW SPICE Absolute")
         #--------------------------------------------------------------------------------
         #save figs
+        fig_rms.savefig(out_dir / "Residual_RMS.pdf")
+        fig_sim_RSW.savefig(out_dir / "RSW_diff_Sim.pdf")
+        fig_sim_SPICE_rsw.savefig(out_dir / "RSW_diff_initial_Sim_SPICE.pdf")
+        fig_final_sim_SPICE_rsw.savefig(out_dir / "RSW_diff_final_Sim_SPICE.pdf")
+        
+        #fig_sim_RSW_abs.savefig(out_dir / "RSW_abs_final_Sim.pdf")
+        #fig_SPICE_RSW_abs.savefig(out_dir / "RSW_abs_SPICE.pdf")
+        
+        
+        
+        
         fig_Cartesian.savefig(out_dir / "Cartesian_Difference_SPICE.pdf")
         fig_estimation_residuals.savefig(out_dir / "Estimation_residual.pdf")
         fig_SPICE_residuals.savefig(out_dir / "SPICE_residual.pdf")
         #fig_RA.savefig(out_dir / "RA_res.pdf")
         #fig_DEC.savefig(out_dir / "DEC_res.pdf")
+
+        arr = np.stack(residual_history_arcseconds, axis=0)   # shape ??
+        np.save(out_dir / "residual_history_arcseconds.npy", arr)
+
+      
+        arr1 = np.stack(state_history_array, axis=0)
+        np.save(out_dir / "state_history_array.npy", arr1)
+
+        arr2 = np.stack(state_history_initial_array, axis=0)
+        np.save(out_dir / "state_history_initial_array.npy", arr2)
+
+        arr3 = np.stack(states_SPICE_with_time, axis=0)
+        np.save(out_dir / "states_SPICE_with_time.npy", arr3)
+
+        arr4 = np.stack(observation_set_ids, axis=0)
+        np.save(out_dir / "observation_set_ids.npy", arr4)
+
         
+        observations_sorted = observations.get_observations()
+        np.save(out_dir / "observations_sorted.npy",np.array(observations_sorted,dtype=object))
+
+        np.save(out_dir / "observation_times.npy",np.array(observation_times))
+
+        residuals_sorted = observations.get_residuals()
+        np.save(out_dir / "residuals_sorted.npy",np.array(residuals_sorted,dtype=object))
     
     elif settings['obs']['type'] == 'Simulated':
         print("Saving simulated observations residuals...")
@@ -300,8 +367,8 @@ def make_timestamped_folder(base_path="Results"):
 if __name__ == "__main__":
         
     # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
-    simulation_start_epoch = DateTime(1996, 1,  1).epoch() #2006, 8,  27 1963, 3,  4  
-    simulation_end_epoch   = DateTime(2021, 1, 1).epoch()   #2006, 9, 2 2019, 10, 1
+    simulation_start_epoch = DateTime(1986, 1,  1).epoch() #2006, 8,  27 1963, 3,  4  
+    simulation_end_epoch   = DateTime(2020, 1, 1).epoch()   #2006, 9, 2 2019, 10, 1
     
     simulation_initial_epoch = DateTime(2007, 1, 1).epoch()
     global_frame_origin = 'SSB'
@@ -345,7 +412,7 @@ if __name__ == "__main__":
     settings_prop['bodies_to_propagate'] = settings_acc['bodies_to_propagate'] 
     settings_prop['central_bodies'] = settings_acc['central_bodies']
     settings_prop['global_frame_orientation'] = settings_env["global_frame_orientation"]
-    settings_prop['fixed_step_size'] = 60*60*4 # 30 minutes
+    settings_prop['fixed_step_size'] = 60*60 # 30 minutes
   
     #--------------------------------------------------------------------------------------------
     # OBSERVATION SETTINGS 
@@ -356,7 +423,13 @@ if __name__ == "__main__":
     settings_obs["bodies"] = [("Triton", "Neptune")]                           # bodies to observe
     settings_obs["cadence"] = 60*60*3 # Every 3 hours
     settings_obs["type"] = "Real" # Simulated or Real observations
-    settings_obs["files"] = ["Triton_286_nm0084.csv","Triton_337_nm0088.csv","Triton_673_nm0079"] #"Triton_337_nm0088.csv","Triton_689_nm0078.csv","Triton_689_nm0077.csv","Triton_689_nm0007.csv"]
+
+    # --- Load ---
+    with open("file_names.json", "r") as f:
+        file_names_loaded = json.load(f)
+
+
+    settings_obs["files"] = file_names_loaded             #["Triton_286_nm0084.csv","Triton_337_nm0088.csv","Triton_673_nm0079"] #"Triton_337_nm0088.csv","Triton_689_nm0078.csv","Triton_689_nm0077.csv","Triton_689_nm0007.csv"]
     #--------------------------------------------------------------------------------------------
     # OBSERVATION SETTINGS 
     #--------------------------------------------------------------------------------------------
@@ -364,7 +437,7 @@ if __name__ == "__main__":
     settings_est = dict()
     #settings_est['pseudo_observations_settings'] = pseudo_observations_settings
     #settings_est['pseudo_observations'] = pseudo_observations
-    settings_est['est_parameters'] = ['initial_state','Rotation_Pole_Position_Neptune'] #, 'Rotation_Pole_Position_Neptune']
+    settings_est['est_parameters'] = ['initial_state'] #,'Rotation_Pole_Position_Neptune'] #, 'Rotation_Pole_Position_Neptune']
 
 
     
@@ -378,7 +451,7 @@ if __name__ == "__main__":
 
 
 
-    main(settings,make_timestamped_folder("Results/SelectedAbsObservationsOctober"))
+    main(settings,make_timestamped_folder("Results/BetterFigs/Outliers"))
 
 
     #path_list = ["PoleOrientation/SimpleRotationModel/residuals_rsw.npy","PoleOrientation/EstimationSimpleRotationModel/residuals_rsw.npy"]

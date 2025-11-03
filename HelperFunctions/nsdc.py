@@ -619,7 +619,18 @@ def remove_nsdc_outliers(times, observations, moons, observatories, bodies,stand
     means, stddevs, diflist = analyse_nsdc_data(times, observations, moons, observatories, bodies, False,standard_orientation)
 
     # DOMINIC: essetnially removed filtering
-    outlier_indices = [i for i, nested_list in enumerate(diflist) if any(abs(x) > 2.5E-5 for x, mean, std_dev in zip(nested_list, means, stddevs))]
+    #outlier_indices = [i for i, nested_list in enumerate(diflist) if any(abs(x) > 2.5E-5 for x, mean, std_dev in zip(nested_list, means, stddevs))]
+    
+    # Identify outliers
+    outlier_indices = []
+    for i, nested_list in enumerate(diflist):
+        dev_mean = abs(nested_list - means)
+        if any(dev_mean > 2.5 * stddevs):
+            outlier_indices.append(i)
+        # if any(abs(x - mean) > threshold * std for x, mean, std in zip(nested_list, means, stds))
+    
+
+
     filtered_diflist = [x for i, x in enumerate(diflist) if i not in outlier_indices]
     filtered_observations = [x for i, x in enumerate(observations) if i not in outlier_indices]
     filtered_times = [x for i, x in enumerate(times) if i not in outlier_indices]
@@ -628,6 +639,8 @@ def remove_nsdc_outliers(times, observations, moons, observatories, bodies,stand
     rms = [np.sqrt(np.mean(np.square(np.asarray(filtered_diflist)[:,0]))),np.sqrt(np.mean(np.square(np.asarray(filtered_diflist)[:,1])))]
 
     print('removed', len(outlier_indices), 'outliers, with indices:', outlier_indices)
+
+
 
     means, stddevs, diflist = analyse_nsdc_data(filtered_times, filtered_observations, filtered_moons, filtered_observatories, bodies, False,standard_orientation)
     print('Means:', means, 'Stddevs:', stddevs)
@@ -1391,7 +1404,7 @@ def save_nsdc_data_to_csv(times, RADEC, moons, observatories, studyname, diflist
                 for j in range(len(epochs)):
                     writer.writerow([epochs[j], observations[j][0], observations[j][1], difs[j][0], difs[j][1]])
 
-def process_nsdc_file(filename,analyse, standard_orientation):
+def process_nsdc_file(filename,analyse, standard_orientation,savepath):
     print('processing', filename)
     '''
     Meta function to fully process a file from reading to saving as seperate csv files per observed body-observatory combination
@@ -1442,7 +1455,7 @@ def process_nsdc_file(filename,analyse, standard_orientation):
     times, RADEC, moons, observatories, diflist, rms, means, stddevs = remove_nsdc_outliers(times, RADEC, moons, observatories, bodies,standard_orientation, 3, analyse)
     #if (abs(means[0]) < stddevs[0] and abs(means[1]) <stddevs[1]):
     print("Generating csv file: ",studyname)
-    save_nsdc_data_to_csv(times, RADEC, moons, observatories, studyname, diflist, 'Observations/ObservationsProcessedTest/')
+    save_nsdc_data_to_csv(times, RADEC, moons, observatories, studyname, diflist, savepath)
     # else:
     #     print("Did not make cvs file of: ",studyname)
     return

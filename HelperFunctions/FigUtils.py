@@ -33,7 +33,7 @@ def ConvertToDateTime(float_time_J2000):
 # ##############################################################################################
 # # RESIDUALS RSW
 # ##############################################################################################
-def Residuals_RSW(residuals_RSW, time,type="normal"):
+def Residuals_RSW(residuals_RSW, time,type="normal",title=None):
 
     time_dt = ConvertToDateTime(time)
     fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True, constrained_layout=True)
@@ -80,8 +80,9 @@ def Residuals_RSW(residuals_RSW, time,type="normal"):
         fig.suptitle('Residuals in RSW Frame') #, y=0.995)
     
     elif type == "difference":
-        fig.suptitle('Difference in Residuals RSW Neptune and SSB') #, y=0.995)
-    
+        fig.suptitle('Difference in Residuals RSW') #, y=0.995)
+    if title != None:
+        fig.suptitle(title)
 
     return fig
 
@@ -375,11 +376,16 @@ def Residuals_RSW_Compare(residuals_RSW, time,
 # # RESIDUALS PER ITERATION
 # ##############################################################################################
 def Residuals_RMS(residuals_j2000):
-    
+    first_entry = 1 
+    last_entry = 4
+    if np.shape(residuals_j2000)[-1] == 3:
+        print("processing absolute angular residuals...")
+        first_entry = 1
+        last_entry = 3
     iterations = np.shape(residuals_j2000)[0]
     rms = np.zeros(iterations)
     for i in range(iterations):
-        A = residuals_j2000[i][:, 1:4]          # (N,3) residuals (same RMS as inertial; RSW is a rotation)
+        A = residuals_j2000[i][:, first_entry:last_entry]          # (N,3) residuals (same RMS as inertial; RSW is a rotation)
 
         # unweighted scalar RMS (what Tudat prints)
         rms[i] = np.sqrt(np.mean(A**2))     
@@ -389,12 +395,15 @@ def Residuals_RMS(residuals_j2000):
     ax.scatter(x, rms)
 
     for i, v in enumerate(rms, start=1):
-        ax.annotate(f"{v:.0f}", (i, v), textcoords="offset points", xytext=(0, 6), ha="center")
+        ax.annotate(f"{v:.2e}", (i, v), textcoords="offset points", xytext=(0, 6), ha="center")
 
     ax.set_xticks(x)                               # only integer ticks (1..N)
     ax.set_xlim(0.5, len(rms) + 0.5)               # a bit of padding
     ax.set_xlabel('Iterations [-]')
     ax.set_ylabel('RMS Residual [m]')
+    if last_entry == 3:
+        ax.set_ylabel('RMS Residual [arcseconds]')
+   
     ax.grid(True) 
     ax.set_title('RMS of Residuals per iteration')
 

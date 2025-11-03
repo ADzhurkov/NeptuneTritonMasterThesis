@@ -57,23 +57,25 @@ def observatory_info (Observatory): #Positive to north and east
                 return np.deg2rad(longitude),  np.deg2rad(latitude), altitude
         print('No matching Observatory found')
 
-def LoadObservations(folder_path,system_of_bodies,files='None'):
+def LoadObservations(folder_path,system_of_bodies,files='None',weights = None):
     
     #folder_path = 'ObservationsProcessed/CurrentProcess'
     if files == 'None':
         raw_observation_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.csv')]
     else:
         #print("Taking from list: ",files)
-        raw_observation_files = [os.path.join(folder_path,f) for f in os.listdir(folder_path) if f in files]
-        print('raw observations selected: ',raw_observation_files)
+        # Instead of iterating over os.listdir(), iterate over files
+        raw_observation_files = [os.path.join(folder_path, f) for f in files if f in os.listdir(folder_path)]
+        print('observation files selected: ',raw_observation_files)
     
 
     obstimes = []
     observation_set_list = []
     observation_settings_list = []
-    Observatories = []
-
+    #Observatories = []
+    observation_set_ids = []
     #Start loop over every csv in folder
+    observation_collection_full = None
     for file in raw_observation_files:
         # if file != 'Observations/ObservationsProcessedTest/Triton_327_nm0082.csv':
         #     continue
@@ -85,6 +87,11 @@ def LoadObservations(folder_path,system_of_bodies,files='None'):
 
         Moon = split_string[0]
         Observatory = split_string[1]
+        file_id = split_string[2].split(".")[0]
+        set_id = Observatory + "_" + file_id
+        observation_set_ids.append(set_id)
+
+
         # Define the position of the observatory on Earth
         observatory_longitude, observatory_latitude, observatory_altitude = observatory_info(Observatory)
 
@@ -130,7 +137,7 @@ def LoadObservations(folder_path,system_of_bodies,files='None'):
 
 
         # Create observation set 
-        observation_set_list.append( estimation.observations.single_observation_set(
+        observation_set_list.append(estimation.observations.single_observation_set(
             model_settings.angular_position_type, 
             link_definition,
             angles,
@@ -138,13 +145,52 @@ def LoadObservations(folder_path,system_of_bodies,files='None'):
             links.LinkEndType.receiver #observation.receiver 
         ))
 
+        #Create Observation Collection for the current file and assign weights
+        if weights is not None:
+            observation_single_set_current = estimation.observations.single_observation_set(
+            model_settings.angular_position_type, 
+            link_definition,
+            angles,
+            times, 
+            links.LinkEndType.receiver)
+            
+            observation_collection_current = estimation.observations.ObservationCollection([observation_single_set_current]) 
+            
+            w = weights.loc[set_id, ['weight_ra', 'weight_dec']].to_numpy()
+            w_avg = np.mean(w)
+            observation_collection_current.set_constant_weight(
+                    w_avg,
+                    estimation.observations.observations_processing.observation_parser(model_settings.angular_position_type)
+                    )
+
+                
+            if observation_collection_full is None:
+                observation_collection_full = estimation.observations.ObservationCollection(observation_set_list) 
+            
+                w = weights.loc[set_id, ['weight_ra', 'weight_dec']].to_numpy()
+                
+                observation_collection_full.set_constant_weight(
+                        w,
+                        estimation.observations.observations_processing.observation_parser(model_settings.angular_position_type)
+                        )
+
+            else:
+            
+                observation_collection_full.append(observation_collection_current)  #
+                print('size of full observations: ',len(observation_collection_full.get_concatenated_weights()))
+                
         observation_settings_list.append(model_settings.angular_position(link_definition))
-        Observatories.append(Observatory)
+        #print("set id: ",set_id)
+        #print("len of times: ",len(times))
     
     
     observations = estimation.observations.ObservationCollection(observation_set_list) 
-    
-    return observations,observation_settings_list,Observatories
+    print('size of full observations without weights: ',len(observations.get_concatenated_weights()))
+                
+    if weights is not None:
+        observations = observation_collection_full
+
+    return observations,observation_settings_list,observation_set_ids
 
 
 

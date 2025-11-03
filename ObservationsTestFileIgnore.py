@@ -3,12 +3,15 @@
 
 import os
 import yaml
+import json
 import numpy as np
 import matplotlib
 from matplotlib import pyplot as plt
+from matplotlib.patches import Patch
 import matplotlib.dates as mdates
 import datetime as dt
-from datetime import datetime
+from datetime import datetime, timedelta
+
 from pathlib import Path
 
 # tudatpy imports
@@ -36,8 +39,6 @@ from tudatpy.astro.time_conversion import DateTime
 from tudatpy.data import save2txt
 
 import sys
-from pathlib import Path
-
 
 import pandas as pd
 
@@ -59,6 +60,8 @@ import nsdc
 matplotlib.use("PDF")  #tkagg
 
 
+# J2000 epoch: January 1, 2000, 12:00:00 TT (approximately)
+J2000_EPOCH = datetime(2000, 1, 1, 12, 0, 0)
 
 #--------------------------------------------------------------------------------------------
 # FUNCTIONS
@@ -104,7 +107,16 @@ def Get_SPICE_residual_from_observations(observations,Observatories,system_of_bo
     uncertainty_ra_SPICE = diflist[:,0] * 180/np.pi * 3600 
     uncertainty_dec_SPICE = diflist[:,1] * 180/np.pi * 3600 
     uncertainty_SPICE = [uncertainty_ra_SPICE,uncertainty_dec_SPICE]
-    return uncertainty_SPICE
+    
+    mean_ra = np.average(uncertainty_ra_SPICE)
+    std_ra = np.std(uncertainty_ra_SPICE)
+    
+    mean_dec = np.average(uncertainty_dec_SPICE)
+    std_dec = np.std(uncertainty_dec_SPICE)
+
+    mean = [mean_ra,mean_dec]
+    std = [std_ra,std_dec]
+    return uncertainty_SPICE,mean,std
 
 
 def PlotCountHistogram(observation_times,path,bin_type="Month"):
@@ -245,13 +257,249 @@ def PlotResidualsTime(observations,Observatories,system_of_bodies,output_folder)
     fig.savefig(output_folder_path / "DEC_residuals_SPICE.pdf")
 
 
+def create_color_mapping(df):
+    """
+    Create a consistent color mapping for all files in the dataframe.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Input dataframe with 'nr' column
+    
+    Returns:
+    --------
+    dict : Dictionary mapping file number to color
+    """
+    file_numbers = sorted(df['nr'].unique())
+    n_files = len(file_numbers)
+    
+    # Generate colors
+    if n_files <= 20:
+        colors_array = plt.cm.tab20(np.linspace(0, 1, 20))
+    else:
+        colors_array = plt.cm.tab20b(np.linspace(0, 1, n_files))
+    
+    # Create a dictionary mapping file number to color
+    file_colors = {file_nr: colors_array[i] for i, file_nr in enumerate(file_numbers)}
+    
+    return file_colors
+
+
+def filter_dataframe(df, max_mean_ra=0.1, max_mean_dec=0.1):
+    """
+    Filter dataframe based on mean RA and DEC thresholds.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Input dataframe with 'mean' column containing [RA, DEC] values
+    max_mean_ra : float
+        Maximum absolute mean for RA
+    max_mean_dec : float
+        Maximum absolute mean for DEC
+    
+    Returns:
+    --------
+    pd.DataFrame : Filtered dataframe
+    """
+    # Extract mean RA and DEC
+    df['mean_RA'] = df['mean'].apply(lambda x: abs(x[0]))
+    df['mean_DEC'] = df['mean'].apply(lambda x: abs(x[1]))
+    
+    # Filter based on thresholds
+    filtered_df = df[(df['mean_RA'] < max_mean_ra) & (df['mean_DEC'] < max_mean_dec)].copy()
+    
+    print(f"Original data: {len(df)} files")
+    print(f"Filtered data: {len(filtered_df)} files")
+    print(f"Removed: {len(df) - len(filtered_df)} files")
+    
+    return filtered_df
+
+
+def plot_observation_analysis(df, file_colors=None, title_suffix=""):
+    """
+    Create stacked histogram and bar chart of observations over time.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Dataframe with columns: 'nr', 'observatory', 'times', 'mean', 'std'
+    file_colors : dict, optional
+        Dictionary mapping file number to color. If None, creates new mapping.
+    title_suffix : str
+        Additional text to add to plot titles
+    
+    Returns:
+    --------
+    dict : Color mapping used in the plot
+    fig  : Figure to save to specific folder later
+    """
+    file_numbers = sorted(df['nr'].unique())
+    n_files = len(file_numbers)
+    
+    if n_files == 0:
+        print("No data to plot!")
+        return file_colors
+    
+    # Use provided color mapping or create new one
+    if file_colors is None:
+        file_colors = create_color_mapping(df)
+    
+    # Explode the dataframe so each observation time gets its own row
+    rows = []
+    for _, row in df.iterrows():
+        for time in row['times']:
+            # Convert Tudat time (seconds since J2000) to datetime
+            time_datetime = J2000_EPOCH + timedelta(seconds=float(time))
+            rows.append({
+                'nr': row['nr'],
+                'observatory': row['observatory'],
+                'time': time_datetime
+            })
+    
+    df_exploded = pd.DataFrame(rows)
+    
+    # Create a period column for monthly bins
+    df_exploded['month'] = df_exploded['time'].dt.to_period('M')
+    
+    # Count observations per file per month
+    monthly_counts = df_exploded.groupby(['month', 'nr']).size().unstack(fill_value=0)
+    
+    # Calculate n_observations for the bar plot
+    df['n_observations'] = df['times'].apply(len)
+    
+    # Create figure with two subplots (stacked vertically)
+    fig = plt.figure(figsize=(18, 12))
+    
+    # Adjust subplot positioning to leave room for legend
+    gs = fig.add_gridspec(2, 1, height_ratios=[2, 1], hspace=0.3,
+                          left=0.08, right=0.82, top=0.95, bottom=0.08)
+    
+    # Top subplot: Stacked histogram
+    ax1 = fig.add_subplot(gs[0])
+    
+    # Get colors in the correct order for the stacked plot (only for files in current data)
+    plot_colors = [file_colors[nr] for nr in monthly_counts.columns]
+    
+    monthly_counts.plot(
+        kind='bar',
+        stacked=True,
+        ax=ax1,
+        color=plot_colors,
+        width=1.0,
+        legend=False
+    )
+    
+    ax1.set_xlabel('Time (Month)', fontsize=12)
+    ax1.set_ylabel('Number of Observations', fontsize=12)
+    title = f'Observation Count Over Time by File{title_suffix}'
+    ax1.set_title(title, fontsize=14)
+    
+    # Format x-axis to show fewer labels
+    n_labels = 20
+    tick_positions = np.linspace(0, len(monthly_counts) - 1, n_labels, dtype=int)
+    ax1.set_xticks(tick_positions)
+    ax1.set_xticklabels([str(monthly_counts.index[i]) for i in tick_positions], 
+                         rotation=45, ha='right')
+    
+    # Create legend outside the plot area (only for files in current data)
+    handles = [Patch(facecolor=file_colors[nr], label=f'File {nr}') 
+               for nr in file_numbers]
+    ax1.legend(handles=handles, 
+               bbox_to_anchor=(1.02, 1), 
+               loc='upper left',
+               ncol=1,
+               fontsize=8,
+               frameon=True)
+    
+    # Bottom subplot: Bar chart of observations per file
+    ax2 = fig.add_subplot(gs[1])
+    
+    # Use the same colors for each file
+    bar_colors = [file_colors[nr] for nr in df['nr']]
+    ax2.bar(df['nr'], df['n_observations'], color=bar_colors)
+    ax2.set_xlabel('File Number', fontsize=12)
+    ax2.set_ylabel('Count', fontsize=12)
+    ax2.set_title('Number of Observations per File', fontsize=14)
+    ax2.tick_params(axis='x', rotation=45)
+    
+
+    return fig, file_colors
+
+def plot_mean_std_analysis(df, file_colors=None, title_suffix=""):
+    """
+    Create bar charts showing mean and std for RA and DEC per file.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Dataframe with columns: 'nr', 'mean', 'std'
+    file_colors : dict, optional
+        Dictionary mapping file number to color. If None, creates new mapping.
+    title_suffix : str
+        Additional text to add to plot titles
+    save_path : Path or str, optional
+        Path to save the figure. If None, doesn't save.
+    
+    Returns:
+    --------
+    dict : Color mapping used in the plot
+    fig  : Figure to save later
+    """
+    # Use provided color mapping or create new one
+    if file_colors is None:
+        file_colors = create_color_mapping(df)
+    
+    # Extract mean and std for RA and DEC
+    df['mean_RA'] = df['mean'].apply(lambda x: x[0])
+    df['mean_DEC'] = df['mean'].apply(lambda x: x[1])
+    df['std_RA'] = df['std'].apply(lambda x: x[0])
+    df['std_DEC'] = df['std'].apply(lambda x: x[1])
+    
+    # Get colors for each file
+    bar_colors = [file_colors[nr] for nr in df['nr']]
+    
+    # Create figure with 2 rows and 2 columns (RA and DEC for mean and std)
+    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+    
+    # Plot 1: Mean RA per file
+    axes[0, 0].bar(df['nr'], df['mean_RA'], color=bar_colors)
+    axes[0, 0].set_xlabel('File Number')
+    axes[0, 0].set_ylabel('Mean RA [arcseconds]')
+    axes[0, 0].set_title(f'Mean RA Residuals per File{title_suffix}')
+    axes[0, 0].tick_params(axis='x', rotation=45)
+    
+    # Plot 2: Std RA per file
+    axes[0, 1].bar(df['nr'], df['std_RA'], color=bar_colors)
+    axes[0, 1].set_xlabel('File Number')
+    axes[0, 1].set_ylabel('Std RA [arcseconds]')
+    axes[0, 1].set_title(f'Standard Deviation RA per File{title_suffix}')
+    axes[0, 1].tick_params(axis='x', rotation=45)
+    
+    # Plot 3: Mean DEC per file
+    axes[1, 0].bar(df['nr'], df['mean_DEC'], color=bar_colors)
+    axes[1, 0].set_xlabel('File Number')
+    axes[1, 0].set_ylabel('Mean DEC [arcseconds]')
+    axes[1, 0].set_title(f'Mean DEC Residuals per File{title_suffix}')
+    axes[1, 0].tick_params(axis='x', rotation=45)
+    
+    # Plot 4: Std DEC per file
+    axes[1, 1].bar(df['nr'], df['std_DEC'], color=bar_colors)
+    axes[1, 1].set_xlabel('File Number')
+    axes[1, 1].set_ylabel('Std DEC [arcseconds]')
+    axes[1, 1].set_title(f'Standard Deviation DEC per File{title_suffix}')
+    axes[1, 1].tick_params(axis='x', rotation=45)
+    
+    plt.tight_layout()
+    
+    return fig,file_colors
 
 
 ##############################################################################################
 # LOAD SPICE KERNELS
 ##############################################################################################
 
-from pathlib import Path
+
 
 # Path to the current script
 current_dir = Path(__file__).resolve().parent
@@ -281,8 +529,8 @@ for k in kernel_paths:
 ##############################################################################################
 
 # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
-simulation_start_epoch = DateTime(1987, 8,  29).epoch()
-simulation_end_epoch   = DateTime(2006, 9, 1).epoch()
+simulation_start_epoch = DateTime(1960, 1,  1).epoch()
+simulation_end_epoch   = DateTime(2025, 1, 1).epoch()
 global_frame_origin = 'SSB'
 global_frame_orientation = 'ECLIPJ2000'
 
@@ -305,31 +553,160 @@ body_settings,system_of_bodies = PropFuncs.Create_Env(settings_env)
 #--------------------------------------------------------------------------------------------
 # EXTRACT OBSERVATIONS
 #--------------------------------------------------------------------------------------------
-folder_path = "Observations/ObservationsProcessedTest"
+folder_path = "Observations/ProcessedOutliers/" 
 files = os.listdir(folder_path) #['Triton_119_nm0017.csv'] 
 
-files = ["Triton_337_nm0088.csv","Triton_755_nm0081.csv","Triton_689_nm0078.csv","Triton_689_nm0077.csv","Triton_689_nm0007.csv"]
+#files = ["Triton_337_nm0088.csv","Triton_755_nm0081.csv","Triton_689_nm0078.csv","Triton_689_nm0077.csv","Triton_689_nm0007.csv"]
 
-#for f in files: 
-observations,observations_settings,Observatories = ObsFunc.LoadObservations("Observations/ObservationsProcessedTest",system_of_bodies,files)
+data = []
+for f in files: 
+    print('processing file: ',f)
 
-observation_times =  observations.get_observation_times()
+    observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations(folder_path,system_of_bodies,[f])
+    Observatories = []
+    for id in observation_set_ids:
+        Observatory =  id.split("_")[0]
+        Observatories.append(Observatory)
+    observation_times = observations.get_observation_times()
+    residuals,mean,std = Get_SPICE_residual_from_observations(observations,Observatories,system_of_bodies)
 
+    string_to_split = f.split(".")[0]
+    file_nr = string_to_split.split("_")[1:]
+    id = file_nr[0] + "_" + file_nr[1]
 
-output_folder = "Observations/Figures/Selected" #+ f.split(".")[0]
+    data.append({
+        "nr": id,
+        "observatory": Observatories,
+        "times": observation_times[0],
+        "residuals": residuals,
+        "mean": mean,
+        "std": std
+    })
 
-output_folder_path = make_timestamped_folder(output_folder)
+df = pd.DataFrame(data)
+df = df.sort_values('nr')
+
+print(df)
+df['n_observations'] = df['times'].apply(len)
+
+# Extract mean and std for RA and DEC
+df['mean_RA'] = df['mean'].apply(lambda x: x[0])
+df['mean_DEC'] = df['mean'].apply(lambda x: x[1])
+df['std_RA'] = df['std'].apply(lambda x: x[0])
+df['std_DEC'] = df['std'].apply(lambda x: x[1])
 
 
 
 #--------------------------------------------------------------------------------------------
 # PLOTS
 #--------------------------------------------------------------------------------------------
-PlotCountHistogram(observation_times,output_folder_path,bin_type="Count")
+output_folder = "Observations/Figures/Analysis/Outliers" #+ f.split(".")[0]
 
-PlotResidualsTime(observations,Observatories,system_of_bodies,output_folder_path)
+output_folder_path = make_timestamped_folder(output_folder)
 
-residuals = Get_SPICE_residual_from_observations(observations,Observatories,system_of_bodies)
+
+
+
+
+# Step 1: Create consistent color mapping from original data
+file_colors = create_color_mapping(df)
+
+# Step 2: Plot unfiltered data
+analysis_fig,_ = plot_observation_analysis(df, file_colors=file_colors, 
+                         title_suffix=" (All Data)")
+mean_std_fig,_ = plot_mean_std_analysis(df, file_colors=file_colors, 
+                      title_suffix=" (All Data)",)
+
+# Step 3: Filter the data
+filtered_df = filter_dataframe(df, max_mean_ra=0.1, max_mean_dec=0.1)
+
+filtered_files = list(zip(filtered_df['nr']))
+#print(filtered_files)
+
+file_names = []
+for file in filtered_files:
+    file_string = 'Triton_' + file[0] + ".csv"
+    file_names.append(file_string)
+
+
+
+
+# --- Save ---
+with open("observation_set_ids.json", "w") as f:
+    json.dump(observation_set_ids, f, indent=2)
+
+# --- Save ---
+with open("file_names.json", "w") as f:
+    json.dump(file_names, f, indent=2)
+
+
+# --- Load ---
+with open("file_names.json", "r") as f:
+    file_names_loaded = json.load(f)
+
+
+
+# Step 4: Plot filtered data with same colors
+filtered_analysis_fig,_ = plot_observation_analysis(filtered_df, file_colors=file_colors, 
+                         title_suffix=" (Filtered: |mean| < 0.1)")
+filtered_mean_std_fig,_ = plot_mean_std_analysis(filtered_df, file_colors=file_colors, 
+                      title_suffix=" (Filtered: |mean| < 0.1)")
+                      
+
+analysis_fig.savefig(output_folder_path / "Count_raw.pdf")
+
+mean_std_fig.savefig(output_folder_path / "Mean_std_raw.pdf")
+
+
+filtered_analysis_fig.savefig(output_folder_path / "Count_filtered.pdf")
+
+filtered_mean_std_fig.savefig(output_folder_path / "Mean_std_filtered.pdf")
+
+
+
+# Leave top right empty or use for combined count
+#axes[0, 1].axis('off')
+
+# # Plot 1: Mean RA per file
+# axes[0, 0].bar(df['nr'], df['mean_RA'],color=bar_colors)
+# axes[0, 0].set_xlabel('File Number')
+# axes[0, 0].set_ylabel('Mean RA [arcseconds]')
+# axes[0, 0].set_title('Mean RA Residuals per File')
+# axes[0, 0].tick_params(axis='x', rotation=45)
+
+# # Plot 2: Mean DEC per file
+# axes[1, 0].bar(df['nr'], df['mean_DEC'],color=bar_colors)
+# axes[1, 0].set_xlabel('File Number')
+# axes[1, 0].set_ylabel('Mean DEC [arcseconds]')
+# axes[1, 0].set_title('Mean DEC Residuals per File')
+# axes[1, 0].tick_params(axis='x', rotation=45)
+
+# # Plot 3: Std RA per file
+# axes[0, 1].bar(df['nr'], df['std_RA'],color=bar_colors)
+# axes[0, 1].set_xlabel('File Number')
+# axes[0, 1].set_ylabel('Std RA [arcseconds]')
+# axes[0, 1].set_title('Standard Deviation RA per File')
+# axes[0, 1].tick_params(axis='x', rotation=45)
+
+# # Plot 4: Std DEC per file
+# axes[1, 1].bar(df['nr'], df['std_DEC'],color=bar_colors)
+# axes[1, 1].set_xlabel('File Number')
+# axes[1, 1].set_ylabel('Std DEC [arcseconds]')
+# axes[1, 1].set_title('Standard Deviation DEC per File')
+# axes[1, 1].tick_params(axis='x', rotation=45)
+
+# plt.tight_layout()
+
+
+
+#--------------------------------------------------------------------------------------------
+# PLOTS
+#--------------------------------------------------------------------------------------------
+# PlotCountHistogram(observation_times,output_folder_path,bin_type="Count")
+
+# PlotResidualsTime(observations,Observatories,system_of_bodies,output_folder_path)
+
+# residuals = Get_SPICE_residual_from_observations(observations,Observatories,system_of_bodies)
 
 # #210127288.1842448
 # observatory_ephemerides = environment_setup.create_ground_station_ephemeris(

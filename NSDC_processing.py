@@ -56,7 +56,7 @@ for k in kernel_paths:
 folder_path = "Observations/NeptuneObservations/" 
 raw_observation_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.txt')]
 
-folder_path_csv = "Observations/ObservationsProcessedTest/" 
+folder_path_csv = "Observations/ProcessedOutliers/" 
 observation_files_csv = [os.path.join(folder_path_csv, f) for f in os.listdir(folder_path_csv) if f.endswith('.csv')]
 
 suffixes = []
@@ -80,7 +80,7 @@ for i in range(len(raw_observation_files)):
         print("Skipping already processed file...",suffix)
     else:
         print("Currently processing: ",file)
-        nsdc.process_nsdc_file(file,True, 'ECLIPJ2000')
+        nsdc.process_nsdc_file(file,True, 'ECLIPJ2000',folder_path_csv)
 print(suffixes2)
 #Create SPICE figures
 #--------------------------------------------------------------------------------------------------------------------------
