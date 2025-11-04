@@ -66,7 +66,7 @@ def LoadObservations(folder_path,system_of_bodies,files='None',weights = None):
         #print("Taking from list: ",files)
         # Instead of iterating over os.listdir(), iterate over files
         raw_observation_files = [os.path.join(folder_path, f) for f in files if f in os.listdir(folder_path)]
-        print('observation files selected: ',raw_observation_files)
+        print('observation files selected: ',files)
     
 
     obstimes = []
@@ -75,7 +75,7 @@ def LoadObservations(folder_path,system_of_bodies,files='None',weights = None):
     #Observatories = []
     observation_set_ids = []
     #Start loop over every csv in folder
-    observation_collection_full = None
+    observation_collection_full = estimation.observations.ObservationCollection([])
     for file in raw_observation_files:
         # if file != 'Observations/ObservationsProcessedTest/Triton_327_nm0082.csv':
         #     continue
@@ -145,6 +145,8 @@ def LoadObservations(folder_path,system_of_bodies,files='None',weights = None):
             links.LinkEndType.receiver #observation.receiver 
         ))
 
+        observation_settings_list.append(model_settings.angular_position(link_definition))
+
         #Create Observation Collection for the current file and assign weights
         if weights is not None:
             observation_single_set_current = estimation.observations.single_observation_set(
@@ -155,7 +157,10 @@ def LoadObservations(folder_path,system_of_bodies,files='None',weights = None):
             links.LinkEndType.receiver)
             
             observation_collection_current = estimation.observations.ObservationCollection([observation_single_set_current]) 
-            
+            #print('size of angles: ',len(angles))
+            #print('size of current collection: ',len(observation_collection_current.get_concatenated_observation_times()))
+
+
             w = weights.loc[set_id, ['weight_ra', 'weight_dec']].to_numpy()
             w_avg = np.mean(w)
             observation_collection_current.set_constant_weight(
@@ -164,28 +169,29 @@ def LoadObservations(folder_path,system_of_bodies,files='None',weights = None):
                     )
 
                 
-            if observation_collection_full is None:
-                observation_collection_full = estimation.observations.ObservationCollection(observation_set_list) 
+            # if observation_collection_full is None:
+            #     print("Observation collection full is none creating it...")
+            #     observation_collection_full = estimation.observations.ObservationCollection(observation_set_list) 
             
-                w = weights.loc[set_id, ['weight_ra', 'weight_dec']].to_numpy()
+            #     w = weights.loc[set_id, ['weight_ra', 'weight_dec']].to_numpy()
                 
-                observation_collection_full.set_constant_weight(
-                        w,
-                        estimation.observations.observations_processing.observation_parser(model_settings.angular_position_type)
-                        )
+            #     observation_collection_full.set_constant_weight(
+            #             w,
+            #             estimation.observations.observations_processing.observation_parser(model_settings.angular_position_type)
+            #             )
 
-            else:
-            
-                observation_collection_full.append(observation_collection_current)  #
-                print('size of full observations: ',len(observation_collection_full.get_concatenated_weights()))
+            #else:
+            print("Appending observation collection with current with size: ",len(observation_collection_current.get_concatenated_observation_times()))
+            observation_collection_full.append(observation_collection_current)  #
+            print('size of full observations: ',len(observation_collection_full.get_concatenated_observation_times()))
                 
-        observation_settings_list.append(model_settings.angular_position(link_definition))
+        
         #print("set id: ",set_id)
         #print("len of times: ",len(times))
     
     
     observations = estimation.observations.ObservationCollection(observation_set_list) 
-    print('size of full observations without weights: ',len(observations.get_concatenated_weights()))
+    print('size of full observations without weights: ',len(observations.get_concatenated_observation_times()))
                 
     if weights is not None:
         observations = observation_collection_full

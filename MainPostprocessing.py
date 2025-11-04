@@ -892,7 +892,7 @@ if __name__ == "__main__":
 
 
     data = []
-    observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ObservationsProcessedTest",system_of_bodies,file_names_loaded)
+    observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,file_names_loaded)
 
     print("Loaded tudat observations...")
     #--------------------------------------------------------------------------------------------
