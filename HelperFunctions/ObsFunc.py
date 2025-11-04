@@ -75,7 +75,7 @@ def LoadObservations(folder_path,system_of_bodies,files='None',weights = None):
     #Observatories = []
     observation_set_ids = []
     #Start loop over every csv in folder
-    observation_collection_full = estimation.observations.ObservationCollection([])
+    observation_collections_list = []
     for file in raw_observation_files:
         # if file != 'Observations/ObservationsProcessedTest/Triton_327_nm0082.csv':
         #     continue
@@ -178,21 +178,22 @@ def LoadObservations(folder_path,system_of_bodies,files='None',weights = None):
             #             )
 
             #else:
-            print("Appending observation collection with current with size: ",len(observation_collection_current.get_concatenated_observation_times()))
-            observation_collection_full.append(observation_collection_current)  #
-            print('size of full observations: ',len(observation_collection_full.get_concatenated_observation_times()))
+            #print("Appending observation collection with current with size: ",len(observation_collection_current.get_concatenated_observation_times()))
+            observation_collections_list.append(observation_collection_current) #
+            #print('size of full observations: ',len(observation_collection_full.get_concatenated_observation_times()))
                 
         
         #print("set id: ",set_id)
         #print("len of times: ",len(times))
     
-    
+    observation_collection_full = estimation.observations.merge_observation_collections(observation_collections_list)
     observations = estimation.observations.ObservationCollection(observation_set_list) 
-    print('size of full observations without weights: ',len(observations.get_concatenated_observation_times()))
-                
+    
+    print('size of full observations without weights: ', len(observations.get_concatenated_observation_times()))
+   
     if weights is not None:
         observations = observation_collection_full
-
+        print('size of full observations with weights: ', len(observation_collection_full.get_concatenated_observation_times()))
     return observations,observation_settings_list,observation_set_ids
 
 

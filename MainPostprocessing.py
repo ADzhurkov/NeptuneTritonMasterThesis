@@ -20,6 +20,9 @@ from tudatpy.interface import spice
 from tudatpy.astro import time_conversion, element_conversion,frame_conversion
 from tudatpy.astro.time_conversion import DateTime
 
+import tudatpy
+print(tudatpy.__version__)
+
 
 # Get the path to the directory containing this file
 current_dir = Path(__file__).resolve().parent
@@ -898,7 +901,7 @@ if __name__ == "__main__":
     #--------------------------------------------------------------------------------------------
     # LOAD ESTIMATION RESULTS
     #--------------------------------------------------------------------------------------------
-    arrays = load_npy_files("/home/atn/Documents/Year 5/Thesis/Github/NeptuneTritonMasterThesis/Results/BetterFigs/Outliers/First")
+    arrays = load_npy_files("Results/BetterFigs/Outliers/First")
     
     print("Loaded numpy arrays from estimation...")
     nr_observations = []
@@ -993,13 +996,21 @@ if __name__ == "__main__":
     #--------------------------------------------------------------------------------------------
 
 
+    #Compute std in arcseconds
     std_per_id = df.groupby("id")[["residual_ra_last", "residual_dec_last"]].std().rename(
-    columns={"residual_ra_last": "std_ra", "residual_dec_last": "std_dec"})
-    
-    weights = 1.0 / (std_per_id ** 2)
+        columns={"residual_ra_last": "std_ra", "residual_dec_last": "std_dec"}
+    )
+
+    # Convert to radians
+    arcsec_to_rad = np.pi / (180.0 * 3600.0)
+    std_per_id_rad = std_per_id * arcsec_to_rad
+
+    # Compute weights = 1 / σ²
+    weights = 1.0 / (std_per_id_rad ** 2)
     weights.columns = ["weight_ra", "weight_dec"]
-    
-    weights.to_csv(out_dir / "weights.txt", sep="\t", float_format="%.8f")
+
+    # Save to file
+    weights.to_csv(out_dir / "weights.txt", sep="\t", float_format="%.8e")
 
 
     # Assign weights

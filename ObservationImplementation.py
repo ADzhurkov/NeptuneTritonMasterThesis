@@ -11,7 +11,7 @@ import matplotlib.dates as mdates
 import datetime as dt
 from datetime import datetime
 from pathlib import Path
-
+import pandas as pd
 # tudatpy imports
 from tudatpy import math
 from tudatpy import constants
@@ -113,8 +113,10 @@ def main(settings: dict,out_dir):
     elif settings["obs"]["type"] == "Real":
         
         files = settings["obs"]["files"]
+        weights = settings["obs"]["weights"]
+        observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,file_names_loaded,weights = weights)
 
-        observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,files)
+        #observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,files)
         Observatories = []
         for id in observation_set_ids:
             Observatory =  id.split("_")[0]
@@ -428,8 +430,18 @@ if __name__ == "__main__":
     with open("file_names.json", "r") as f:
         file_names_loaded = json.load(f)
 
-
     settings_obs["files"] = file_names_loaded             #["Triton_286_nm0084.csv","Triton_337_nm0088.csv","Triton_673_nm0079"] #"Triton_337_nm0088.csv","Triton_689_nm0078.csv","Triton_689_nm0077.csv","Triton_689_nm0007.csv"]
+   
+    #weights = pd.read_csv("Results/BetterFigs/Outliers/PostProcessing/First/FirstWeights/weights.txt", sep="\t")
+    # LOAD — set that column back as the index
+    weights = pd.read_csv(
+        "Results/BetterFigs/Outliers/PostProcessing/First/FirstWeights/weights.txt",
+        sep="\t",
+        index_col="id"       # <-- important
+    )
+
+    settings_obs["weights"] = weights
+   
     #--------------------------------------------------------------------------------------------
     # OBSERVATION SETTINGS 
     #--------------------------------------------------------------------------------------------
@@ -448,10 +460,9 @@ if __name__ == "__main__":
     settings["prop"] = settings_prop
     settings["obs"] = settings_obs
     settings["est"] = settings_est
+   
 
-
-
-    main(settings,make_timestamped_folder("Results/BetterFigs/Outliers"))
+    main(settings,make_timestamped_folder("Results/BetterFigs/Weights"))
 
 
     #path_list = ["PoleOrientation/SimpleRotationModel/residuals_rsw.npy","PoleOrientation/EstimationSimpleRotationModel/residuals_rsw.npy"]
