@@ -157,9 +157,6 @@ def LoadObservations(folder_path,system_of_bodies,files='None',weights = None):
             links.LinkEndType.receiver)
             
             observation_collection_current = estimation.observations.ObservationCollection([observation_single_set_current]) 
-            #print('size of angles: ',len(angles))
-            #print('size of current collection: ',len(observation_collection_current.get_concatenated_observation_times()))
-
 
             w = weights.loc[set_id, ['weight_ra', 'weight_dec']].to_numpy()
             w_avg = np.mean(w)

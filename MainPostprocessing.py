@@ -916,7 +916,7 @@ if __name__ == "__main__":
         arrays['residual_history_arcseconds'])
     
     #Load results without outliers
-    arrays = load_npy_files("/home/atn/Documents/Year 5/Thesis/Github/NeptuneTritonMasterThesis/Results/BetterFigs/FirstFitNoWeights/EstimationTest7_State_only")
+    arrays = load_npy_files("Results/BetterFigs/FirstFitNoWeights/EstimationTest7_State_only")
     
     print("Loaded previous numpy arrays from estimation...")
     nr_observations = []
