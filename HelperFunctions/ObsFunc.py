@@ -57,7 +57,7 @@ def observatory_info (Observatory): #Positive to north and east
                 return np.deg2rad(longitude),  np.deg2rad(latitude), altitude
         print('No matching Observatory found')
 
-def LoadObservations(folder_path,system_of_bodies,files='None',weights = None):
+def LoadObservations(folder_path,system_of_bodies,files='None',weights = None,timeframe_weights=False):
     
     #folder_path = 'ObservationsProcessed/CurrentProcess'
     if files == 'None':
@@ -158,14 +158,39 @@ def LoadObservations(folder_path,system_of_bodies,files='None',weights = None):
             
             observation_collection_current = estimation.observations.ObservationCollection([observation_single_set_current]) 
 
-            w = weights.loc[set_id, ['weight_ra', 'weight_dec']].to_numpy()
-            w_avg = np.mean(w)
-            observation_collection_current.set_constant_weight(
-                    w_avg,
-                    estimation.observations.observations_processing.observation_parser(model_settings.angular_position_type)
+            if timeframe_weights == True:
+                # Filter all rows belonging to this id
+                weights_id = weights[weights["id"] == set_id]
+
+                # Loop through each timeframe for this id
+                for _, row in weights_id.iterrows():
+                    min_time = float(row["start_sec"]-10)  # seconds since J2000
+                    max_time = float(row["end_sec"]+10)
+
+                    # Create parser for this time interval
+                    parser = estimation.observations.observations_processing.observation_parser(
+                        (min_time, max_time)
                     )
 
-                
+                    # Load weights from this timeframe
+                    w_ra = row["weight_ra"]
+                    w_dec = row["weight_dec"]
+                    w_avg = np.nanmean([w_ra, w_dec])  # average of RA/DEC weights
+
+                    # Assign weights for this timeframe interval
+                    observation_collection_current.set_constant_weight(
+                        w_avg,
+                        parser
+                    )
+            else:
+                w = weights.loc[set_id, ['weight_ra', 'weight_dec']].to_numpy()
+                w_avg = np.mean(w)
+
+                #assign weights
+                observation_collection_current.set_constant_weight(
+                        w_avg,
+                        estimation.observations.observations_processing.observation_parser(model_settings.angular_position_type)
+                        )
             # if observation_collection_full is None:
             #     print("Observation collection full is none creating it...")
             #     observation_collection_full = estimation.observations.ObservationCollection(observation_set_list) 

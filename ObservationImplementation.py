@@ -113,8 +113,14 @@ def main(settings: dict,out_dir):
     elif settings["obs"]["type"] == "Real":
         
         files = settings["obs"]["files"]
-        weights = settings["obs"]["weights"]
-        observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,file_names_loaded,weights = weights)
+        
+        if settings["obs"]["use_weights"] == True:
+            weights = settings["obs"]["weights"]
+            observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,file_names_loaded,weights = weights)
+        else:
+            observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,file_names_loaded)
+
+
 
         #observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,files)
         Observatories = []
@@ -286,7 +292,14 @@ def main(settings: dict,out_dir):
         arr4 = np.stack(observation_set_ids, axis=0)
         np.save(out_dir / "observation_set_ids.npy", arr4)
 
-        
+
+        #save formal errors, covariance, initial state and estimated state
+        np.save(out_dir / "formal_errors.npy",estimation_output.formal_errors)
+        np.save(out_dir / "covariance.npy",estimation_output.covariance)
+        np.save(out_dir / "final_paramaters.npy" ,estimation_output.final_parameters)
+        np.save(out_dir / "initial_paramaters.npy" ,estimation_output.parameter_history[:,0])
+
+
         observations_sorted = observations.get_observations()
         np.save(out_dir / "observations_sorted.npy",np.array(observations_sorted,dtype=object))
 
@@ -354,6 +367,8 @@ def main(settings: dict,out_dir):
 
 
 
+    #Remove Pandas Data frame of the weights from the settings to be able to save and reduce file size
+    settings['obs'].pop('weights', None)
     #Save yaml settings file
     with open(out_dir / "settings.yaml", "w", encoding="utf-8") as f:
         yaml.safe_dump(settings, f, sort_keys=False, allow_unicode=True)
@@ -439,7 +454,9 @@ if __name__ == "__main__":
         sep="\t",
         index_col="id"       # <-- important
     )
-
+    settings_obs["use_weights"] = True
+    settings_obs["mean_reduced_weights"] = False
+    settings_obs["per_night_weights"] = False
     settings_obs["weights"] = weights
    
     #--------------------------------------------------------------------------------------------
