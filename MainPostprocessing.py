@@ -21,7 +21,7 @@ from tudatpy.astro import time_conversion, element_conversion,frame_conversion
 from tudatpy.astro.time_conversion import DateTime
 
 import tudatpy
-print(tudatpy.__version__)
+
 
 
 # Get the path to the directory containing this file
@@ -1465,6 +1465,7 @@ if __name__ == "__main__":
     # Replace NaNs in the original dataframe with these means
     summary[["weight_ra", "weight_dec"]] = mean_weights
 
+    summary.to_csv(out_dir / "summary.txt", sep="\t", float_format="%.8e")
 
 
     # Assign weights
@@ -1473,5 +1474,16 @@ if __name__ == "__main__":
             system_of_bodies,file_names_loaded,
             weights = summary,
             timeframe_weights=True)
+
+    min_time = float(row["start_sec"]-10)  # seconds since J2000
+    max_time = float(row["end_sec"]+10)
+
+    # Create parser for this time interval
+    parser = estimation.observations.observations_processing.observation_parser(
+        (min_time, max_time)
+    )
+
+    simulation_start_epoch = DateTime(1986, 1,  1).epoch() #2006, 8,  27 1963, 3,  4  
+    simulation_end_epoch   = DateTime(2020, 1, 1).epoch()
 
     print("end")
