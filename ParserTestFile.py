@@ -312,8 +312,47 @@ with open("file_names.json", "r") as f:
 #observations,observations_settings,observation_set_ids = LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,file_names_loaded)
 observations,observations_settings,observation_set_ids = LoadObservations(
         "Observations/ProcessedOutliers/",
-        system_of_bodies,file_names_loaded,
+        system_of_bodies,
+        #file_names_loaded,
         weights = weights,
         timeframe_weights=True)
+
+
+
+first_row = weights.iloc[0]
+
+start_time_Date = DateTime.from_epoch(first_row['start_sec'])
+end_time_Date = DateTime.from_epoch(first_row['end_sec'])
+
+print('start time Timeframe: ',start_time_Date)
+print('end time Timeframe: ',end_time_Date)
+
+parser = estimation.observations.observations_processing.observation_parser((first_row['start_sec'], first_row['end_sec']))
+
+observations_from_parser = observations.get_concatenated_observation_times(parser)
+
+#No observations are present here as if the aren't any in the timeframe speciefied
+print('observations from timeframe: ',observations_from_parser)
+
+
+min_time = DateTime(1986,1,1).epoch()
+max_time = DateTime(1995,1,1).epoch()
+parser_test = estimation.observations.observations_processing.observation_parser((min_time, max_time))
+
+observations_from_test = observations.get_concatenated_observation_times(parser_test)
+
+entry_from_test = DateTime.from_epoch(observations_from_test[9])
+
+#The 10th entry of the test timeframe is within the bounds of end_time_Date therefore there should be at least 10 entries in observation parser
+print("the 10th entry from the test parser: ",entry_from_test)
+
+
+
+
+
+# observations.set_constant_weight(
+#                     0.5,
+#                     parser
+#                 )
 
 print("end")
