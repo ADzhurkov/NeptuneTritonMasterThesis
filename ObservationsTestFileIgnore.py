@@ -285,36 +285,73 @@ def create_color_mapping(df):
     return file_colors
 
 
-def filter_dataframe(df, max_mean_ra=0.1, max_mean_dec=0.1):
+def filter_by_mean_std(
+    df: pd.DataFrame,
+    *,
+    max_mean_ra: float = 0.1,
+    max_mean_dec: float = 0.1,
+    max_std_ra: float = 0.5,
+    max_std_dec: float = 0.5,
+    id_col: str = "nr",
+    mean_col: str = "mean",     # if present, it's [RA_mean, DEC_mean]
+    std_col: str | None = None  # if present, it's [RA_std, DEC_std]
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Filter dataframe based on mean RA and DEC thresholds.
-    
-    Parameters:
-    -----------
-    df : pd.DataFrame
-        Input dataframe with 'mean' column containing [RA, DEC] values
-    max_mean_ra : float
-        Maximum absolute mean for RA
-    max_mean_dec : float
-        Maximum absolute mean for DEC
-    
-    Returns:
-    --------
-    pd.DataFrame : Filtered dataframe
-    """
-    # Extract mean RA and DEC
-    df['mean_RA'] = df['mean'].apply(lambda x: abs(x[0]))
-    df['mean_DEC'] = df['mean'].apply(lambda x: abs(x[1]))
-    
-    # Filter based on thresholds
-    filtered_df = df[(df['mean_RA'] < max_mean_ra) & (df['mean_DEC'] < max_mean_dec)].copy()
-    
-    print(f"Original data: {len(df)} files")
-    print(f"Filtered data: {len(filtered_df)} files")
-    print(f"Removed: {len(df) - len(filtered_df)} files")
-    
-    return filtered_df
+    Exclude rows where *either* mean (RA/DEC) or std (RA/DEC) exceeds thresholds.
+    Returns (filtered_df, removed_df) for auditing.
 
+    Threshold units should match your columns (e.g., arcseconds).
+
+    Columns supported:
+      - Preferred: 'mean_RA','mean_DEC','std_RA','std_DEC'
+      - Or:       'mean' (list-like [RA, DEC]) and optionally 'std' (list-like [RA, DEC])
+    """
+    df2 = df.copy()
+
+    # --- Ensure mean columns ---
+    if "mean_RA" not in df2.columns or "mean_DEC" not in df2.columns:
+        if mean_col in df2.columns:
+            df2["mean_RA"]  = df2[mean_col].apply(lambda x: abs(float(x[0])) if pd.notna(x) else np.nan)
+            df2["mean_DEC"] = df2[mean_col].apply(lambda x: abs(float(x[1])) if pd.notna(x) else np.nan)
+        else:
+            raise ValueError("Need mean_RA/mean_DEC or a 'mean' column.")
+
+    # --- Ensure std columns ---
+    if "std_RA" not in df2.columns or "std_DEC" not in df2.columns:
+        if std_col and std_col in df2.columns:
+            df2["std_RA"]  = df2[std_col].apply(lambda x: float(x[0]) if pd.notna(x) else np.nan)
+            df2["std_DEC"] = df2[std_col].apply(lambda x: float(x[1]) if pd.notna(x) else np.nan)
+        else:
+            # If std columns are missing and no std list provided, default to NaN (won't trigger removal on std)
+            df2["std_RA"]  = df2.get("std_RA",  np.nan)
+            df2["std_DEC"] = df2.get("std_DEC", np.nan)
+
+    # --- Build masks ---
+    too_mean = (df2["mean_RA"].abs() > max_mean_ra) | (df2["mean_DEC"].abs() > max_mean_dec)
+    too_std  = (df2["std_RA"] > max_std_ra) | (df2["std_DEC"] > max_std_dec)
+    exclude  = too_mean | too_std
+
+    # Reasons for exclusion (helpful for auditing)
+    reasons = []
+    for i, row in df2.iterrows():
+        r = []
+        if row["mean_RA"] >  max_mean_ra: r.append(f"mean_RA>{max_mean_ra}")
+        if row["mean_DEC"] > max_mean_dec: r.append(f"mean_DEC>{max_mean_dec}")
+        if row["std_RA"]  >  max_std_ra:  r.append(f"std_RA>{max_std_ra}")
+        if row["std_DEC"] >  max_std_dec: r.append(f"std_DEC>{max_std_dec}")
+        reasons.append(", ".join(r))
+    df2["remove_reason"] = reasons
+
+    removed_df  = df2.loc[exclude].copy()
+    filtered_df = df2.loc[~exclude].copy()
+
+    # Optional: print a brief summary
+    print(f"Original: {len(df2)} files | Kept: {len(filtered_df)} | Removed: {len(removed_df)}")
+    if not removed_df.empty:
+        cols_to_show = [c for c in [id_col, "mean_RA", "mean_DEC", "std_RA", "std_DEC", "remove_reason"] if c in removed_df.columns]
+        print(removed_df[cols_to_show].to_string(index=False))
+
+    return filtered_df, removed_df
 
 def plot_observation_analysis(df, file_colors=None, title_suffix=""):
     """
@@ -553,7 +590,7 @@ body_settings,system_of_bodies = PropFuncs.Create_Env(settings_env)
 #--------------------------------------------------------------------------------------------
 # EXTRACT OBSERVATIONS
 #--------------------------------------------------------------------------------------------
-folder_path = "Observations/ProcessedOutliers/" 
+folder_path = "Observations/RelativeObservations/" #RelativeObservations MoreObservationsNovember
 files = os.listdir(folder_path) #['Triton_119_nm0017.csv'] 
 
 #files = ["Triton_337_nm0088.csv","Triton_755_nm0081.csv","Triton_689_nm0078.csv","Triton_689_nm0077.csv","Triton_689_nm0007.csv"]
@@ -600,7 +637,7 @@ df['std_DEC'] = df['std'].apply(lambda x: x[1])
 #--------------------------------------------------------------------------------------------
 # PLOTS
 #--------------------------------------------------------------------------------------------
-output_folder = "Observations/Figures/Analysis/Outliers" #+ f.split(".")[0]
+output_folder = "Observations/Figures/RelativeObservations//" #+ f.split(".")[0]
 
 output_folder_path = make_timestamped_folder(output_folder)
 
@@ -618,7 +655,17 @@ mean_std_fig,_ = plot_mean_std_analysis(df, file_colors=file_colors,
                       title_suffix=" (All Data)",)
 
 # Step 3: Filter the data
-filtered_df = filter_dataframe(df, max_mean_ra=0.1, max_mean_dec=0.1)
+#filtered_df = filter_dataframe(df, max_mean_ra=0.1, max_mean_dec=0.1)
+
+filtered_df, removed_df = filter_by_mean_std(
+    df,
+    max_mean_ra=2,
+    max_mean_dec=2,
+    max_std_ra=2,
+    max_std_dec=2,
+    id_col="nr"
+)
+
 
 filtered_files = list(zip(filtered_df['nr']))
 #print(filtered_files)

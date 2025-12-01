@@ -206,17 +206,18 @@ def Create_Propagator_Settings(settings_dict,acceleration_models):
     central_bodies = settings_dict['central_bodies'][0]
     global_frame_orientation = settings_dict['global_frame_orientation']
     fixed_step_size = settings_dict['fixed_step_size']
-    #acceleration_models = settings_dict['acceleration_models']
+    
+    #Get initial state OR assign SPICE if not given
+    initial_state = settings_dict.get('initial_state', None)
 
-
-    # 2) Get Triton’s state w.r.t. Neptune in J2000 at your epoch (seconds TDB from J2000)
-    initial_state = spice.get_body_cartesian_state_at_epoch(
-        target_body_name       = bodies_to_propagate,
-        observer_body_name     = central_bodies,
-        reference_frame_name   = global_frame_orientation,
-        aberration_corrections = "none",
-        ephemeris_time         = simulation_initial_epoch,
-    )
+    if initial_state is None:
+        initial_state = spice.get_body_cartesian_state_at_epoch(
+            target_body_name       = bodies_to_propagate,
+            observer_body_name     = central_bodies,
+            reference_frame_name   = global_frame_orientation,
+            aberration_corrections = "none",
+            ephemeris_time         = simulation_initial_epoch,
+        )
 
     #TODO Arrange this better and make expandable
     dependent_variables_to_save = [

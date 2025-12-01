@@ -57,7 +57,7 @@ def observatory_info (Observatory): #Positive to north and east
                 return np.deg2rad(longitude),  np.deg2rad(latitude), altitude
         print('No matching Observatory found')
 
-def LoadObservations(folder_path,system_of_bodies,files='None',weights = None,timeframe_weights=False):
+def LoadObservations(folder_path,system_of_bodies,files='None',weights = None,timeframe_weights=False,per_night_weights=False):
     
     #folder_path = 'ObservationsProcessed/CurrentProcess'
     if files == 'None':
@@ -162,26 +162,43 @@ def LoadObservations(folder_path,system_of_bodies,files='None',weights = None,ti
                 # Filter all rows belonging to this id  
                 weights_id = weights[weights["id"] == set_id]
 
-                # Loop through each timeframe for this id
-                for _, row in weights_id.iterrows():
-                    min_time = float(row["start_sec"]-10)  # seconds since J2000
-                    max_time = float(row["end_sec"]+10)
+                # Repeat rows based on n_obs
+                #expanded = weights_id.loc[weights_id.index.repeat(weights_id['n_obs'])]
+                
+                expanded = weights_id.loc[weights_id.index.repeat(weights_id['n_obs'] * 2)]
 
-                    # Create parser for this time interval
-                    parser = estimation.observations.observations_processing.observation_parser(
-                        (min_time, max_time)
-                    )
+                if per_night_weights == True:
+                    weight_column = 'mean_weight_scaled'
+                else:
+                    weight_column = 'mean_weight'
+                tabulated_weights = expanded[weight_column].values
 
-                    # Load weights from this timeframe
-                    w_ra = row["weight_ra"]
-                    w_dec = row["weight_dec"]
-                    w_avg = np.nanmean([w_ra, w_dec])  # average of RA/DEC weights
+                tabulated_weights = tabulated_weights.reshape(-1, 1)
 
-                    # Assign weights for this timeframe interval
-                    observation_collection_current.set_constant_weight(
-                        w_avg,
-                        parser
-                    )
+                #new = np.full_like(tabulated_weights, 10**10)
+
+                observation_collection_current.set_tabulated_weights(tabulated_weights)
+
+                # # Loop through each timeframe for this id
+                # for _, row in weights_id.iterrows():
+                #     min_time = float(row["start_sec"]-10)  # seconds since J2000
+                #     max_time = float(row["end_sec"]+10)
+
+                #     # Create parser for this time interval
+                #     parser = estimation.observations.observations_processing.observation_parser(
+                #         (min_time, max_time)
+                #     )
+
+                #     # Load weights from this timeframe
+                #     w_ra = row["weight_ra"]
+                #     w_dec = row["weight_dec"]
+                #     w_avg = np.nanmean([w_ra, w_dec])  # average of RA/DEC weights
+
+                #     # Assign weights for this timeframe interval
+                #     observation_collection_current.set_constant_weight(
+                #         w_avg,
+                #         parser
+                #     )
             else:
                 w = weights.loc[set_id, ['weight_ra', 'weight_dec']].to_numpy()
                 w_avg = np.mean(w)

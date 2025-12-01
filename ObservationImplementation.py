@@ -113,12 +113,22 @@ def main(settings: dict,out_dir):
     elif settings["obs"]["type"] == "Real":
         
         files = settings["obs"]["files"]
+        observations_folder_path = settings["obs"]["observations_folder_path"]
         
         if settings["obs"]["use_weights"] == True:
-            weights = settings["obs"]["weights"]
-            observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,file_names_loaded,weights = weights)
+
+            observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations(
+                        observations_folder_path,
+                        system_of_bodies,
+                        files,
+                        weights = settings["obs"]["weights"],
+                        timeframe_weights = settings["obs"]['timeframe_weights'],
+                        per_night_weights = settings["obs"]['per_night_weights'])
         else:
-            observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,file_names_loaded)
+            observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations(
+                        observations_folder_path,
+                        system_of_bodies,
+                        files)
 
 
 
@@ -327,6 +337,42 @@ def main(settings: dict,out_dir):
         #-------------------------------------------------------------------------------
         rms_fig = FigUtils.Residuals_RMS(residuals_j2000)
 
+
+        #--------------------------------------------------------------------------------
+        # Extract the time column (first column)
+        time_column = state_history_array[:, [0]]   # keep it 2D (shape = (289, 1))
+        states_SPICE_with_time = np.hstack((time_column, states_SPICE))
+
+        fig_Cartesian = FigUtils.PlotCartesianDifference(state_history_array, states_SPICE_with_time)
+        
+
+        
+
+        states_SPICE_RSW = ProcessingUtils.rotate_inertial_3_to_rsw(time_column, states_SPICE[:,0:3], state_history_array)
+        states_sim_RSW = []
+        states_sim_RSW.append(ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_initial_array[:,1:4], state_history_array))
+        states_sim_RSW.append(ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_array[:,1:4], state_history_array))
+
+        diff_sim_RSW = (states_sim_RSW[0] - states_sim_RSW[-1])/1e3
+        diff_sim_SPICE_RSW = (states_sim_RSW[0] - states_SPICE_RSW)/1e3
+        diff_final_sim_SPICE_RSW = (states_sim_RSW[-1] - states_SPICE_RSW)/1e3
+
+        fig_sim_RSW = FigUtils.Residuals_RSW(diff_sim_RSW, time_column,type="difference",title="RSW Difference Initial Final")
+        fig_sim_SPICE_rsw = FigUtils.Residuals_RSW(diff_sim_SPICE_RSW, time_column,type="difference",title="RSW Difference Initial SPICE")
+        fig_final_sim_SPICE_rsw = FigUtils.Residuals_RSW(diff_final_sim_SPICE_RSW, time_column,type="difference",title="RSW Difference Final SPICE")
+            
+        fig_sim_RSW_abs = FigUtils.Residuals_RSW(states_sim_RSW[-1], time_column,type="normal",title="RSW Final Simulation Absolute")
+        fig_SPICE_RSW_abs = FigUtils.Residuals_RSW(states_SPICE_RSW, time_column,type="normal",title="RSW SPICE Absolute")
+        #--------------------------------------------------------------------------------
+        #save figs
+   
+        fig_sim_RSW.savefig(out_dir / "RSW_diff_Sim.pdf")
+        fig_sim_SPICE_rsw.savefig(out_dir / "RSW_diff_initial_Sim_SPICE.pdf")
+        fig_final_sim_SPICE_rsw.savefig(out_dir / "RSW_diff_final_Sim_SPICE.pdf")
+        
+
+
+
         #--------------------------------------------------------------------------
         #Get Different Flavors of FFTs
         #--------------------------------------------------------------------------
@@ -384,10 +430,10 @@ def make_timestamped_folder(base_path="Results"):
 if __name__ == "__main__":
         
     # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
-    simulation_start_epoch = DateTime(1986, 1,  1).epoch() #2006, 8,  27 1963, 3,  4  
-    simulation_end_epoch   = DateTime(2020, 1, 1).epoch()   #2006, 9, 2 2019, 10, 1
+    simulation_start_epoch = DateTime(1963, 1,  1).epoch() #2006, 8,  27 1963, 3,  4  
+    simulation_end_epoch   = DateTime(2025, 1, 1).epoch()   #2006, 9, 2 2019, 10, 1
     
-    simulation_initial_epoch = DateTime(2007, 1, 1).epoch()
+    simulation_initial_epoch = DateTime(2006, 10, 1).epoch()
     global_frame_origin = 'SSB'
     global_frame_orientation = 'ECLIPJ2000'
 
@@ -429,36 +475,38 @@ if __name__ == "__main__":
     settings_prop['bodies_to_propagate'] = settings_acc['bodies_to_propagate'] 
     settings_prop['central_bodies'] = settings_acc['central_bodies']
     settings_prop['global_frame_orientation'] = settings_env["global_frame_orientation"]
-    settings_prop['fixed_step_size'] = 60*60 # 30 minutes
+    settings_prop['fixed_step_size'] = 60*60 # 60 minutes
   
     #--------------------------------------------------------------------------------------------
     # OBSERVATION SETTINGS 
     #--------------------------------------------------------------------------------------------
+    
+    # --- Load names of data files
+    with open("file_names.json", "r") as f:
+        file_names_loaded = json.load(f)
+
+    weights = pd.read_csv(
+            "summary.txt", #Results/BetterFigs/AllModernObservations/PostProcessing/First/weights.txt
+            sep="\t",
+            index_col="id")
 
     settings_obs = dict()
     settings_obs["mode"] = ["pos"]
     settings_obs["bodies"] = [("Triton", "Neptune")]                           # bodies to observe
     settings_obs["cadence"] = 60*60*3 # Every 3 hours
-    settings_obs["type"] = "Real" # Simulated or Real observations
+    settings_obs["type"] = "Simulated" # Simulated or Real observations
 
-    # --- Load ---
-    with open("file_names.json", "r") as f:
-        file_names_loaded = json.load(f)
+    settings_obs["files"] = file_names_loaded             
+    settings_obs["observations_folder_path"] = "Observations/RelativeObservations"  #MoreObservationsNovember
 
-    settings_obs["files"] = file_names_loaded             #["Triton_286_nm0084.csv","Triton_337_nm0088.csv","Triton_673_nm0079"] #"Triton_337_nm0088.csv","Triton_689_nm0078.csv","Triton_689_nm0077.csv","Triton_689_nm0007.csv"]
-   
-    #weights = pd.read_csv("Results/BetterFigs/Outliers/PostProcessing/First/FirstWeights/weights.txt", sep="\t")
-    # LOAD — set that column back as the index
-    weights = pd.read_csv(
-        "Results/BetterFigs/Outliers/PostProcessing/First/FirstWeights/weights.txt",
-        sep="\t",
-        index_col="id"       # <-- important
-    )
+    weights = weights.reset_index()
+
     settings_obs["use_weights"] = True
     settings_obs["mean_reduced_weights"] = False
     settings_obs["per_night_weights"] = False
+    settings_obs["timeframe_weights"] = True
     settings_obs["weights"] = weights
-   
+    
     #--------------------------------------------------------------------------------------------
     # OBSERVATION SETTINGS 
     #--------------------------------------------------------------------------------------------
@@ -466,7 +514,7 @@ if __name__ == "__main__":
     settings_est = dict()
     #settings_est['pseudo_observations_settings'] = pseudo_observations_settings
     #settings_est['pseudo_observations'] = pseudo_observations
-    settings_est['est_parameters'] = ['initial_state'] #,'Rotation_Pole_Position_Neptune'] #, 'Rotation_Pole_Position_Neptune']
+    settings_est['est_parameters'] = ['initial_state','Rotation_Pole_Position_Neptune'] #,'Rotation_Pole_Position_Neptune'] #, 'Rotation_Pole_Position_Neptune']
 
 
     
@@ -479,7 +527,7 @@ if __name__ == "__main__":
     settings["est"] = settings_est
    
 
-    main(settings,make_timestamped_folder("Results/BetterFigs/Weights"))
+    main(settings,make_timestamped_folder("Results/BetterFigs/SimulatedObservations"))
 
 
     #path_list = ["PoleOrientation/SimpleRotationModel/residuals_rsw.npy","PoleOrientation/EstimationSimpleRotationModel/residuals_rsw.npy"]

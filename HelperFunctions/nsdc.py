@@ -619,15 +619,15 @@ def remove_nsdc_outliers(times, observations, moons, observatories, bodies,stand
     means, stddevs, diflist = analyse_nsdc_data(times, observations, moons, observatories, bodies, False,standard_orientation)
 
     # DOMINIC: essetnially removed filtering
-    #outlier_indices = [i for i, nested_list in enumerate(diflist) if any(abs(x) > 2.5E-5 for x, mean, std_dev in zip(nested_list, means, stddevs))]
+    outlier_indices = [i for i, nested_list in enumerate(diflist) if any(abs(x) > 2.5E-3 for x, mean, std_dev in zip(nested_list, means, stddevs))]
     
     # Identify outliers
-    outlier_indices = []
-    for i, nested_list in enumerate(diflist):
-        dev_mean = abs(nested_list - means)
-        if any(dev_mean > 2.5 * stddevs):
-            outlier_indices.append(i)
-        # if any(abs(x - mean) > threshold * std for x, mean, std in zip(nested_list, means, stds))
+    #outlier_indices = []
+    #for i, nested_list in enumerate(diflist):
+    #    dev_mean = abs(nested_list - means)
+    #    if any(dev_mean > 2.5 * stddevs):
+    #        outlier_indices.append(i)
+    #    # if any(abs(x - mean) > threshold * std for x, mean, std in zip(nested_list, means, stds))
     
 
 
@@ -1441,6 +1441,7 @@ def process_nsdc_file(filename,analyse, standard_orientation,savepath):
         bodies = generate_standard_nsdc_environment(central_body, standard_orientation)
         # Read each remaining line in the file
         for observation in datafile: 
+            #print(observation)
             body, observatory, values = read_nsdc_file_line(observation,number_observatories,observatory,observatory_entrace,moon_entry,central_body)
             epoch = return_standardised_time(values,time_entry,time_scale,amount_time_entries,time_delta,time_type)
             RA_rad, DEC_rad = return_standardised_angles(values,RA_entry,DEC_entry,body,relative_body_entry,orientation,observatory,epoch,data_type,central_body,bodies,standard_orientation)

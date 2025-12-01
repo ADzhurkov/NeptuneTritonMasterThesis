@@ -102,7 +102,48 @@ def rotate_inertial_6_to_rsw(epochs, inertial_6, state_history):
 
     return np.array(rsw_coll)
 
+def rotate_covariance_inertial_to_rsw(epochs, covariances_6x6, state_history):
+    """
+    Rotate a sequence of inertial-frame 6x6 covariance matrices into the RSW frame.
 
+    Parameters
+    ----------
+    epochs : array-like
+        Epochs corresponding to each covariance matrix.
+    covariances_6x6 : array-like, shape (N, 6, 6)
+        Inertial-frame covariance matrices.
+    state_history : your state history structure
+        Used by make_rsw_rotation_from_state_history().
+
+    Returns
+    -------
+    cov_rsw : ndarray, shape (N, 6, 6)
+        Covariance matrices rotated into the RSW frame.
+    """
+
+    # 3×3 rotation provider
+    R_func = make_rsw_rotation_from_state_history(state_history, size=3)
+
+    cov_rsw_list = []
+
+    for epoch, P_inertial in zip(epochs, covariances_6x6):
+
+       
+        R = R_func(epoch)
+
+        Q = np.block([
+            [R, np.zeros((3, 3))],
+            [np.zeros((3, 3)), R]
+        ])
+
+      
+        P_rsw = Q @ P_inertial @ Q.T
+        cov_rsw_list.append(P_rsw)
+
+    cov_rsw_arr = np.array(cov_rsw_list)
+    assert cov_rsw_arr.shape == covariances_6x6.shape
+
+    return cov_rsw_arr
 
 def array_to_dict(state_history_array):
 

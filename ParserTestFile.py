@@ -318,6 +318,12 @@ observations,observations_settings,observation_set_ids = LoadObservations(
         timeframe_weights=True)
 
 
+def Generate_parser_extract_entries(min_time,max_time,observations):
+    parser_test = estimation.observations.observations_processing.observation_parser((min_time, max_time))
+    observations_from_test = observations.get_concatenated_observation_times(parser_test)
+    return observations_from_test
+
+
 
 first_row = weights.iloc[0]
 
@@ -337,9 +343,8 @@ print('observations from timeframe: ',observations_from_parser)
 
 min_time = DateTime(1986,1,1).epoch()
 max_time = DateTime(1995,1,1).epoch()
-parser_test = estimation.observations.observations_processing.observation_parser((min_time, max_time))
 
-observations_from_test = observations.get_concatenated_observation_times(parser_test)
+observations_from_test = Generate_parser_extract_entries(min_time,max_time,observations)
 
 entry_from_test = DateTime.from_epoch(observations_from_test[9])
 
@@ -347,10 +352,17 @@ entry_from_test = DateTime.from_epoch(observations_from_test[9])
 print("the 10th entry from the test parser: ",entry_from_test)
 
 
+#The observation collection is made of single_observations_sets (one per file):
+print("total number of files equals len of observations:", len(observations.get_observation_times()))
+
+#The last entry of the first file is:
+last_entry = observations.get_observation_times()[0][-1]
+print("last entry from first file is: ", DateTime.from_epoch(last_entry))
 
 
 
-# observations.set_constant_weight(
+# observations.set_constant_weight(len(observations.get_observation_times())
+
 #                     0.5,
 #                     parser
 #                 )
