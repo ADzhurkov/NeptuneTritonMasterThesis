@@ -69,14 +69,51 @@ def Create_Env(settings_dict):
     # set parameters for defining the rotation between frames
     original_frame = global_frame_orientation
     target_frame = "IAU_Neptune"
-    target_frame_spice = "IAU_Neptune"
+    target_frame_spice = "IAU_Neptune" # is this correct?
    
+
+# SELECT ROTATION MODEL NEPTUNE
+#---------------------------------------------------------------------------------------------------------------------------------------------------   
     # create rotation model settings and assign to body settings of "Neptune"
     body_settings.get( "Neptune" ).rotation_model_settings = environment_setup.rotation_model.simple_from_spice(
-    original_frame, target_frame, target_frame_spice, start_epoch)
+            original_frame, target_frame, target_frame_spice, start_epoch)
+
+
+    if settings_dict['Neptune_rot_model_type'] == 'spice':
+        body_settings.get( "Neptune" ).rotation_model_settings = environment_setup.rotation_model.spice(
+                original_frame, target_frame, target_frame_spice)
+    
+    # IAU 2015 (2018)
+    elif settings_dict['Neptune_rot_model_type'] == 'IAU2015':
+        nominal_meridian = 249.978 # W_0
+        nominal_pole = np.array([299.36,43.46]) #alpha_0 and delta_0
+        rotation_rate=541.1397757/24/3600 # W_0_dot (in paper it's multipled by day so /24/3600 should align with tudat check!)
+        pole_precession= np.array([0,0]) # alpha_0_dot and delta_0_dot are 0
+        merdian_periodic_terms = {52.316: (-0.48, 357.85)} #w_N_i, W_i, Phi_N_i in that order
+
+        # Values for alpha and delta from IAU 2015
+        w_n_i = 52.316
+        alpha_i = 0.7
+        delta_i = -0.51
+        phi = 357.85
+
+        # Create the numpy array for [alpha_i, delta_i] as a 2x1 column vector
+        alpha_delta = np.array([alpha_i, delta_i])
+
+        # Create the dictionary
+        data = {w_n_i: (alpha_delta, phi)}
+
+        # If you need it in a list (as per the type annotation)
+        pole_periodic_terms = data
+
+
+        body_settings.get( "Neptune" ).rotation_model_settings = environment_setup.rotation_model.iau_rotation_model(
+                original_frame, target_frame, nominal_meridian,nominal_pole,rotation_rate,pole_precession,merdian_periodic_terms,pole_periodic_terms)
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------
 
     body_settings.get("Neptune").ephemeris_settings = environment_setup.ephemeris.direct_spice(
-        global_frame_origin, global_frame_orientation)
+            global_frame_origin, global_frame_orientation)
 
     # body_settings.get("Earth").ephemeris_settings = environment_setup.ephemeris.direct_spice(
     #     global_frame_origin, global_frame_orientation)

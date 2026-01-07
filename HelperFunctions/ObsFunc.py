@@ -57,8 +57,52 @@ def observatory_info (Observatory): #Positive to north and east
                 return np.deg2rad(longitude),  np.deg2rad(latitude), altitude
         print('No matching Observatory found')
 
-def LoadObservations(folder_path,system_of_bodies,files='None',weights = None,timeframe_weights=False,per_night_weights=False):
-    
+def LoadObservations(
+        folder_path,
+        system_of_bodies,
+        files='None',
+        weights = None,
+        std_weights = False,
+        timeframe_weights=False,
+        per_night_weights=False,
+        per_night_weights_id=False,
+        per_night_weights_hybrid=False,
+        ):
+    """
+    Load Observations from a specific folder, assign weights if promted.  
+
+    Parameters
+    ----------
+    folder_path : strings
+        path to the folder containing .csv files of the observations
+    system_of_bodies : Tudatpy::SystemOfBodies
+        required Tudatpy object to create ObservationCollection
+    files: List of strings (not required)
+        choose specific files to load from the folder_path, they must exist in that folder
+    weights: Pandas Dataframe
+        required if weights need to be assigned. Must contain required columns for weight assignment.
+        Default is weights per id
+    std_weights: bool
+        Default False: rmse weights, True choose std weight column 
+    timeframe_weights: bool
+        indicate if weights should be assigned per timeframe per id
+    per_night_weights: bool
+        indicate if the timeframe weights are descaled per night (different column is selected)
+    per_night_weights_id: bool
+        indicate if id weights descaled per night are provided (different column is selected)
+    per_night_weights_hybrid: bool
+        indicate if hybrid id/tf weights descaled per night are provided (different column is selected)
+    Returns
+    -------
+    dict
+        observations : Tudatpy::ObservationCollection
+            Contains all loaded observations with appropriate weights
+        observation_settings_list : Tudatpy::ObservationSettings
+            Tudatpy object containing the observation settings
+        observation_set_ids : List
+            List of the all loaded file ids in order
+    """
+
     #folder_path = 'ObservationsProcessed/CurrentProcess'
     if files == 'None':
         raw_observation_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.csv')]
@@ -167,10 +211,16 @@ def LoadObservations(folder_path,system_of_bodies,files='None',weights = None,ti
                 
                 expanded = weights_id.loc[weights_id.index.repeat(weights_id['n_obs'] * 2)]
 
+                #choose the approriate column based on conditions
                 if per_night_weights == True:
-                    weight_column = 'mean_weight_scaled'
+                    weight_column = 'mean_weights_std_scaled' if std_weights else 'mean_weight_rmse_scaled' 
+                elif per_night_weights_id ==True:
+                    weight_column = 'mean_weight_std_id_scaled' if std_weights else 'mean_weight_rmse_id_scaled'
+                elif per_night_weights_hybrid == True:
+                    weight_column = 'mean_weight_std_tf_id_scaled' if std_weights else  'mean_weight_rmse_tf_id_scaled'
                 else:
-                    weight_column = 'mean_weight'
+                    weight_column = 'mean_weight_std' if std_weights else 'mean_weight_rmse'
+                
                 tabulated_weights = expanded[weight_column].values
 
                 tabulated_weights = tabulated_weights.reshape(-1, 1)
@@ -179,56 +229,26 @@ def LoadObservations(folder_path,system_of_bodies,files='None',weights = None,ti
 
                 observation_collection_current.set_tabulated_weights(tabulated_weights)
 
-                # # Loop through each timeframe for this id
-                # for _, row in weights_id.iterrows():
-                #     min_time = float(row["start_sec"]-10)  # seconds since J2000
-                #     max_time = float(row["end_sec"]+10)
-
-                #     # Create parser for this time interval
-                #     parser = estimation.observations.observations_processing.observation_parser(
-                #         (min_time, max_time)
-                #     )
-
-                #     # Load weights from this timeframe
-                #     w_ra = row["weight_ra"]
-                #     w_dec = row["weight_dec"]
-                #     w_avg = np.nanmean([w_ra, w_dec])  # average of RA/DEC weights
-
-                #     # Assign weights for this timeframe interval
-                #     observation_collection_current.set_constant_weight(
-                #         w_avg,
-                #         parser
-                #     )
+            #------------------------------------------------------------------------------------        
+            #Assign weights from ID
             else:
-                w = weights.loc[set_id, ['weight_ra', 'weight_dec']].to_numpy()
-                w_avg = np.mean(w)
+                weights_id = weights[weights["id"] == set_id]
+                w_avg = (weights_id['weight_ra'] + weights_id["weight_dec"])/2
 
                 #assign weights
                 observation_collection_current.set_constant_weight(
                         w_avg,
                         estimation.observations.observations_processing.observation_parser(model_settings.angular_position_type)
                         )
-            # if observation_collection_full is None:
-            #     print("Observation collection full is none creating it...")
-            #     observation_collection_full = estimation.observations.ObservationCollection(observation_set_list) 
-            
-            #     w = weights.loc[set_id, ['weight_ra', 'weight_dec']].to_numpy()
-                
-            #     observation_collection_full.set_constant_weight(
-            #             w,
-            #             estimation.observations.observations_processing.observation_parser(model_settings.angular_position_type)
-            #             )
-
-            #else:
-            #print("Appending observation collection with current with size: ",len(observation_collection_current.get_concatenated_observation_times()))
+            #------------------------------------------------------------------------------------        
+            #append current ObservationCollection to list 
             observation_collections_list.append(observation_collection_current) #
-            #print('size of full observations: ',len(observation_collection_full.get_concatenated_observation_times()))
-                
-        
-        #print("set id: ",set_id)
-        #print("len of times: ",len(times))
-    
+            #------------------------------------------------------------------------------------        
+            
+    #Create observation Collection with Weights
     observation_collection_full = estimation.observations.merge_observation_collections(observation_collections_list)
+    
+    #Create ObservationCollection without weights
     observations = estimation.observations.ObservationCollection(observation_set_list) 
     
     print('size of full observations without weights: ', len(observations.get_concatenated_observation_times()))

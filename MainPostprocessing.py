@@ -15,12 +15,14 @@ from matplotlib.lines import Line2D
 import pickle
 import os 
 
-from datetime import datetime, timedelta
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.dates as mdates
+
+import math
+
 
 
 from tudatpy.interface import spice
-
 from tudatpy.astro import time_conversion, element_conversion,frame_conversion
 from tudatpy.astro.time_conversion import DateTime
 
@@ -184,123 +186,6 @@ def create_color_mapping(df):
     
     return file_colors
 
-# def plot_observation_analysis(df, file_colors=None, title_suffix=""):
-#     """
-#     Create stacked histogram and bar chart of observations over time.
-    
-#     Parameters:
-#     -----------
-#     df : pd.DataFrame
-#         Dataframe with columns: 'id', 'observatory', 'times'...
-#     file_colors : dict, optional
-#         Dictionary mapping file number to color. If None, creates new mapping.
-#     title_suffix : str
-#         Additional text to add to plot titles
-    
-#     Returns:
-#     --------
-#     dict : Color mapping used in the plot
-#     fig  : Figure to save to specific folder later
-#     """
-#     file_numbers = sorted(df['id'].unique())
-#     n_files = len(file_numbers)
-    
-#     if n_files == 0:
-#         print("No data to plot!")
-#         return file_colors
-    
-#     # Use provided color mapping or create new one
-#     if file_colors is None:
-#         file_colors = create_color_mapping(df)
-    
-#     # Explode the dataframe so each observation time gets its own row
-#     rows = []
-#     for _, row in df.iterrows():
-#         # Convert Tudat time (seconds since J2000) to datetime
-#         time_datetime = J2000_EPOCH + timedelta(seconds=float(row['times']))
-#         rows.append({
-#             'id': row['id'],
-#             'observatory': row['observatory'],
-#             'time': time_datetime
-#         })
-
-#     df_exploded = pd.DataFrame(rows)
-    
-#     # Create a period column for monthly bins
-#     df_exploded['month'] = df_exploded['time'].dt.to_period('M')
-    
-#     # Count observations per file per month
-#     monthly_counts = df_exploded.groupby(['month', 'id']).size().unstack(fill_value=0)
-    
-#     # Calculate n_observations for the bar plot
-#     id_counts = df.groupby('id').size().reset_index(name='n_observations')
-
-
-
-#     # Create figure with two subplots (stacked vertically)
-#     fig = plt.figure(figsize=(18, 12))
-    
-#     # Adjust subplot positioning to leave room for legend
-#     gs = fig.add_gridspec(2, 1, height_ratios=[2, 1], hspace=0.3,
-#                           left=0.08, right=0.82, top=0.95, bottom=0.08)
-    
-#     # Top subplot: Stacked histogram
-#     ax1 = fig.add_subplot(gs[0])
-    
-#     # Get colors in the correct order for the stacked plot (only for files in current data)
-#     plot_colors = [file_colors[nr] for nr in monthly_counts.columns]
-    
-#     monthly_counts.plot(
-#         kind='bar',
-#         stacked=True,
-#         ax=ax1,
-#         color=plot_colors,
-#         width=1.0,
-#         legend=False
-#     )
-    
-#     ax1.set_xlabel('Time (Month)', fontsize=12)
-#     ax1.set_ylabel('Number of Observations', fontsize=12)
-#     title = f'Observation Count Over Time by File{title_suffix}'
-#     ax1.set_title(title, fontsize=14)
-    
-#     # Format x-axis to show fewer labels
-#     n_labels = 20
-#     tick_positions = np.linspace(0, len(monthly_counts) - 1, n_labels, dtype=int)
-#     ax1.set_xticks(tick_positions)
-#     ax1.set_xticklabels([str(monthly_counts.index[i]) for i in tick_positions], 
-#                          rotation=45, ha='right')
-    
-#     # Create legend outside the plot area (only for files in current data)
-#     handles = [Patch(facecolor=file_colors[nr], label=f'File {nr}') 
-#                for nr in file_numbers]
-#     ax1.legend(handles=handles, 
-#                bbox_to_anchor=(1.02, 1), 
-#                loc='upper left',
-#                ncol=1,
-#                fontsize=8,
-#                frameon=True)
-
-#     # Set hard x-axis limits
-#     xlim_start = pd.Timestamp('1963-01-01').to_period('M')
-#     xlim_end = pd.Timestamp('2025-01-01').to_period('M')
-#     #ax1.set_xlim(-0.5, (xlim_end - xlim_start).n + 0.5)
-      
-#     # Bottom subplot: Bar chart of observations per file
-#     ax2 = fig.add_subplot(gs[1])
-    
-#     # Use the same colors for each file
-#     bar_colors = [file_colors[id] for id in id_counts['id']]
-
-#     ax2.bar(id_counts['id'], id_counts['n_observations'], color=bar_colors)
-#     ax2.set_xlabel('File Number', fontsize=12)
-#     ax2.set_ylabel('Count', fontsize=12)
-#     ax2.set_title('Number of Observations per File', fontsize=14)
-#     ax2.tick_params(axis='x', rotation=45)
-    
-
-#     return fig, file_colors
-
 def plot_observation_analysis(df, file_colors=None, title_suffix=""):
     """
     Create stacked histogram and bar chart of observations over time (by year).
@@ -406,6 +291,7 @@ def plot_observation_analysis(df, file_colors=None, title_suffix=""):
     ax2.tick_params(axis='x', rotation=45)
     
     return fig, file_colors
+
 def calculate_mean_std(df):
     """
     Create bar charts showing mean and std for RA and DEC per file.
@@ -695,7 +581,6 @@ def overlay_residual_stats(df, file_colors, fig=None, axes=None,
     
     return fig, axes
 
-
 def plot_RA_DEC_residuals_colored(df, file_colors=None, labels=["final", "initial"], save_path=None):
     """
     Plot initial and final RA and DEC residuals side by side for multiple files.
@@ -764,8 +649,6 @@ def plot_RA_DEC_residuals_colored(df, file_colors=None, labels=["final", "initia
         fig.savefig(save_path, bbox_inches='tight')
 
     return fig
-
-
 
 def plot_RA_DEC_residuals(
     df,
@@ -856,7 +739,6 @@ def plot_RA_DEC_residuals(
         fig.savefig(save_path, bbox_inches='tight')
 
     return fig, ax
-
 
 def plot_individual_RA_DEC_residuals(
     df,
@@ -976,105 +858,6 @@ def plot_individual_RA_DEC_residuals(
 
     return figs
 
-
-
-def plot_individual_RA_DEC_residuals_demeaned(
-    df,
-    file_colors=None,
-    labels=("Final (demeaned)", "Initial (demeaned)"),
-    show_initial=False,
-):
-    """
-    For each ID, subtract the per-file mean from each observation (RA/DEC),
-    then plot time series panels for RA and DEC.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Requires columns:
-        'id','observatory','times',
-        'residual_ra_first','residual_dec_first',
-        'residual_ra_last','residual_dec_last'
-    file_colors : dict, optional
-        Map file_id -> color (e.g. {'119_nm0017':'C0'})
-    labels : (str, str)
-        Legend labels for (final, initial) traces.
-    show_initial : bool
-        If True, also plot demeaned initial residuals.
-
-    Returns
-    -------
-    figs : dict
-        {file_id: figure}
-    """
-    # Work on a copy
-    df = df.copy()
-
-    # J2000 epoch → datetime
-    J2000_EPOCH = datetime(2000, 1, 1, 12, 0, 0)
-    df["datetime"] = df["times"].astype(float).apply(
-        lambda t: J2000_EPOCH + timedelta(seconds=t)
-    )
-
-    # --- demean per file (ID) ---
-    # final residuals
-    df["ra_last_demean"]  = df["residual_ra_last"] - df.groupby("id")["residual_ra_last"].transform("mean")
-    df["dec_last_demean"] = df["residual_dec_last"] - df.groupby("id")["residual_dec_last"].transform("mean")
-    # initial residuals (only if you plan to plot them)
-    if show_initial:
-        df["ra_first_demean"]  = df["residual_ra_first"] - df.groupby("id")["residual_ra_first"].transform("mean")
-        df["dec_first_demean"] = df["residual_dec_first"] - df.groupby("id")["residual_dec_first"].transform("mean")
-
-    figs = {}
-    unique_ids = df["id"].unique()
-
-    for file_id in unique_ids:
-        d = df[df["id"] == file_id].sort_values("datetime")
-
-        color = (file_colors.get(file_id, "C0") if file_colors else "C0")
-
-        fig, ax = plt.subplots(1, 2, figsize=(14, 5), constrained_layout=True)
-
-        # --- RA ---
-        ax[0].scatter(d["datetime"], d["ra_last_demean"], color=color, alpha=0.8, s=30, label=labels[0])
-        if show_initial:
-            ax[0].scatter(d["datetime"], d["ra_first_demean"], color=color, alpha=0.35, marker="x", s=30, label=labels[1])
-
-        ax[0].set_xlabel("Observation Epoch", fontsize=12)
-        ax[0].set_ylabel("RA residual − mean [arcsec]", fontsize=12)
-        ax[0].set_title(f"RA Residuals (demeaned): {file_id}", fontsize=14)
-        ax[0].grid(True, alpha=0.3)
-        ax[0].axhline(0, color="k", linestyle="--", alpha=0.5, linewidth=1)
-        ax[0].legend(loc="best")
-
-        # --- DEC ---
-        ax[1].scatter(d["datetime"], d["dec_last_demean"], color=color, alpha=0.8, s=30, label=labels[0])
-        if show_initial:
-            ax[1].scatter(d["datetime"], d["dec_first_demean"], color=color, alpha=0.35, marker="x", s=30, label=labels[1])
-
-        ax[1].set_xlabel("Observation Epoch", fontsize=12)
-        ax[1].set_ylabel("DEC residual − mean [arcsec]", fontsize=12)
-        ax[1].set_title(f"DEC Residuals (demeaned): {file_id}", fontsize=14)
-        ax[1].grid(True, alpha=0.3)
-        ax[1].axhline(0, color="k", linestyle="--", alpha=0.5, linewidth=1)
-        ax[1].legend(loc="best")
-
-        # nice time formatting
-        locator = mdates.AutoDateLocator()
-        formatter = mdates.ConciseDateFormatter(locator)
-        for a in ax:
-            a.xaxis.set_major_locator(locator)
-            a.xaxis.set_major_formatter(formatter)
-
-        figs[file_id] = fig
-
-    return figs
-
-
-
-
-
-
 def plot_formal_errors(initial, final, sigma, title="Difference wrt NEP097"):
     pos_diff, vel_diff = (final[:3] - initial[:3])/1e3, final[3:] - initial[3:]
     pos_err, vel_err = sigma[:3]/1e3, sigma[3:]
@@ -1151,85 +934,6 @@ def plot_formal_errors(initial, final, sigma, title="Difference wrt NEP097"):
 
     return fig
 
-
-
-# def split_into_timeframes(
-#     df: pd.DataFrame,
-#     gap_hours: float = 4.0,
-#     time_col: str = "times",              # seconds since J2000
-#     make_datetime: bool = False,
-#     min_obs_per_frame: int = 1,
-#     merge_last_short_back: bool = False,
-#     summary_cols: list[str] = ["residual_ra_last", "residual_dec_last"],       # e.g. ["residual_ra_last", "residual_dec_last"]
-# ):
-#     """
-#     Split each id into time frames using a gap threshold, but only break if the
-#     current frame already has >= min_obs_per_frame. Optionally merge a short
-#     final frame back. Adds per-frame mean/std for requested columns in 'summary'.
-#     """
-#     gap_sec = float(gap_hours) * 3600.0
-#     df_frames = df.copy().sort_values(["id", time_col]).reset_index(drop=True)
-
-#     if make_datetime and "datetime" not in df_frames.columns:
-#         J2000_EPOCH = datetime(2000, 1, 1, 12, 0, 0)
-#         df_frames["datetime"] = df_frames[time_col].astype(float).apply(
-#             lambda t: J2000_EPOCH + timedelta(seconds=float(t))
-#         )
-
-#     def assign_with_min_size(g):
-#         t = g[time_col].astype(float).to_numpy()
-#         n = len(t)
-#         if n == 0:
-#             return pd.Series([], dtype=int, index=g.index)
-#         diffs = np.diff(t)
-#         is_break = np.concatenate(([False], diffs >= gap_sec))
-#         frame_ids = np.zeros(n, dtype=int)
-#         cur_frame, cur_count = 0, 1
-#         for i in range(1, n):
-#             if is_break[i] and cur_count >= max(1, min_obs_per_frame):
-#                 cur_frame += 1
-#                 cur_count = 1
-#             else:
-#                 cur_count += 1
-#             frame_ids[i] = cur_frame
-#         if merge_last_short_back and cur_count < max(1, min_obs_per_frame) and cur_frame > 0:
-#             frame_ids[frame_ids == cur_frame] = cur_frame - 1
-#         return pd.Series(frame_ids, index=g.index, dtype=int)
-
-#     df_frames["timeframe"] = df_frames.groupby("id", group_keys=False).apply(assign_with_min_size)
-
-#     # ---------- Build per-frame summary with mean/std ----------
-#     base = (
-#         df_frames.groupby(["id", "timeframe"])
-#         .agg(start_sec=(time_col, "min"),
-#              end_sec=(time_col, "max"),
-#              n_obs=(time_col, "count"))
-#         .reset_index()
-#     )
-#     base["duration_hours"] = (base["end_sec"] - base["start_sec"]) / 3600.0
-
-#     # Add per-frame means/stds for requested columns
-#     if summary_cols:
-#         stats = (
-#             df_frames.groupby(["id", "timeframe"])[summary_cols]
-#             .agg(["mean", "std"])  # std uses ddof=1 (sample std)
-#         )
-#         # Flatten MultiIndex columns: ("residual_ra_last","mean") -> "mean_residual_ra_last"
-#         stats.columns = [f"{func}_{col}" for col, func in stats.columns.swaplevel(0,1)]
-#         stats = stats.reset_index()
-#         summary = base.merge(stats, on=["id", "timeframe"], how="left")
-#     else:
-#         summary = base
-
-#     if make_datetime:
-#         J2000_EPOCH = datetime(2000, 1, 1, 12, 0, 0)
-#         summary["start_dt"] = summary["start_sec"].apply(lambda s: J2000_EPOCH + timedelta(seconds=float(s)))
-#         summary["end_dt"]   = summary["end_sec"].apply(lambda s: J2000_EPOCH + timedelta(seconds=float(s)))
-
-#     return df_frames, summary
-
-
-
 def split_into_timeframes(
     df: pd.DataFrame,
     gap_hours: float = 4.0,
@@ -1257,19 +961,16 @@ def split_into_timeframes(
     if summary_cols is None:
         summary_cols = ["residual_ra_last", "residual_dec_last"]
     
-    # Convert gap to seconds
     gap_seconds = gap_hours * 3600.0
     
     # Sort by id and time
     df_sorted = df.copy().sort_values(["id", time_col]).reset_index(drop=True)
     
-    # Assign timeframe numbers to each observation
     def assign_timeframes(group):
         """Assign timeframe number to each observation in the group."""
         times = group[time_col].values
         n = len(times)
         
-        # Start with all observations in frame 0
         timeframes = np.zeros(n, dtype=int)
         
         current_frame = 0
@@ -1279,7 +980,7 @@ def split_into_timeframes(
             time_gap = times[i] - times[i-1]
             
             # Should we start a new frame?
-            # Yes, if gap is large AND current frame has enough observations
+            # Yes, if gap is large
             if time_gap >= gap_seconds and obs_in_current_frame >= min_obs_per_frame:
                 current_frame += 1
                 obs_in_current_frame = 1
@@ -1298,7 +999,6 @@ def split_into_timeframes(
     
     return df_sorted, summary
 
-
 def create_summary(df, time_col, summary_cols):
     """Create summary statistics for each (id, timeframe)."""
     
@@ -1315,8 +1015,22 @@ def create_summary(df, time_col, summary_cols):
     # Add mean and std for requested columns
     for col in summary_cols:
         if col in df.columns:
-            stats = df.groupby(["id", "timeframe"])[col].agg(["mean", "std"]).reset_index()
-            stats.columns = ["id", "timeframe", f"{col}_mean", f"{col}_std"]
+            stats = (
+                    df.groupby(["id", "timeframe"])[col]
+                            .agg(
+                            mean="mean",
+                            std="std",
+                            rms=lambda s: np.sqrt(np.mean(s**2))
+                        )
+                        .reset_index())
+
+            stats.columns = [
+                    "id",
+                    "timeframe",
+                    f"{col}_mean",
+                    f"{col}_std",
+                    f"{col}_rms",]
+
             summary = summary.merge(stats, on=["id", "timeframe"], how="left")
     
     # Add datetime columns
@@ -1327,492 +1041,17 @@ def create_summary(df, time_col, summary_cols):
     summary["end_dt"] = summary["end_sec"].apply(
         lambda s: J2000_EPOCH + timedelta(seconds=s)
     )
-    
+    print("kur")
+    summary.rename(columns={'residual_ra_last_mean': 'residual_ra_mean'}, inplace=True)
+    summary.rename(columns={'residual_ra_last_std': 'residual_ra_std'}, inplace=True)
+    summary.rename(columns={'residual_ra_last_rms': 'residual_ra_rms'}, inplace=True)
+    summary.rename(columns={'residual_dec_last_mean': 'residual_dec_mean'}, inplace=True)
+    summary.rename(columns={'residual_dec_last_std': 'residual_dec_std'}, inplace=True)
+    summary.rename(columns={'residual_dec_last_rms': 'residual_dec_rms'}, inplace=True)
     return summary
 
-
-def plot_timeframe_residuals(
-    df,
-    file_colors=None,              # e.g. {'119_nm0017': 'C0'}
-    ylab_ra="RA residual [arcsec]",
-    ylab_dec="DEC residual [arcsec]",
-    min_obs_per_frame=1,
-    save_folder=None,
-):
-    """
-    Plot RA/DEC residuals for each timeframe of each ID.
-    The dataframe must already include:
-        - 'id'
-        - 'timeframe'
-        - 'datetime' (datetime64)
-        - 'ra_last_plot', 'dec_last_plot'  (residuals to plot)
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Preprocessed data including timeframe and residual columns.
-    file_colors : dict, optional
-        Mapping of id -> color.
-    ylab_ra, ylab_dec : str
-        Axis labels for RA/DEC.
-    min_obs_per_frame : int
-        Skip timeframes with fewer than this number of observations.
-    save_folder : str or Path, optional
-        If provided, save each figure as PNG.
-
-    Returns
-    -------
-    figs : dict
-        Dictionary {(id, timeframe): figure}.
-    """
-    figs = {}
-    locator = mdates.AutoDateLocator()
-    formatter = mdates.ConciseDateFormatter(locator)
-
-    if save_folder is not None:
-        save_folder = Path(save_folder)
-        save_folder.mkdir(parents=True, exist_ok=True)
-
-    for (file_id, tf), d in df.groupby(["id", "timeframe"]):
-        if len(d) < min_obs_per_frame:
-            continue
-
-        color = file_colors.get(file_id, "C0") if file_colors else "C0"
-        d = d.sort_values("datetime")
-
-        fig, ax = plt.subplots(1, 2, figsize=(14, 5), constrained_layout=True)
-
-        # --- RA ---
-        ax[0].scatter(d["datetime"], d["residual_ra_last"], color=color, alpha=0.8, s=30, label="Final")
-        ax[0].axhline(0, color="k", ls="--", lw=1, alpha=0.5)
-        ax[0].set_xlabel("Observation Epoch")
-        ax[0].set_ylabel(ylab_ra)
-        ax[0].set_title(f"RA • {file_id} • frame {tf} (n={len(d)})")
-        ax[0].grid(True, axis="y", alpha=0.3)
-        ax[0].xaxis.set_major_locator(locator)
-        ax[0].xaxis.set_major_formatter(formatter)
-
-        # --- DEC ---
-        ax[1].scatter(d["datetime"], d["residual_dec_last"], color=color, alpha=0.8, s=30, label="Final")
-        ax[1].axhline(0, color="k", ls="--", lw=1, alpha=0.5)
-        ax[1].set_xlabel("Observation Epoch")
-        ax[1].set_ylabel(ylab_dec)
-        ax[1].set_title(f"DEC • {file_id} • frame {tf} (n={len(d)})")
-        ax[1].grid(True, axis="y", alpha=0.3)
-        ax[1].xaxis.set_major_locator(locator)
-        ax[1].xaxis.set_major_formatter(formatter)
-
-
-
-        # ----- Fix the x axis limits & ticks per frame -----
-        t0, t1 = d["datetime"].min(), d["datetime"].max()
-        if t0 == t1:
-            pad = timedelta(hours=2)
-            xlo, xhi = t0 - pad, t1 + pad
-        else:
-            pad = (t1 - t0) * 0.05
-            xlo, xhi = t0 - pad, t1 + pad
-
-        for a in ax:
-            a.set_xlim(xlo, xhi)
-            a.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=3, maxticks=6))
-            a.xaxis.set_major_formatter(mdates.ConciseDateFormatter(a.xaxis.get_major_locator()))
-            a.grid(True, axis="y", alpha=0.3)
-
-        # ----- Safer suptitle without overlap -----
-        suptxt = f"Timeframe {tf} • {file_id}\n{t0:%Y-%m-%d %H:%M} → {t1:%Y-%m-%d %H:%M} (Δ={t1-t0})"
-        fig.suptitle(suptxt, fontsize=14)  # with constrained_layout this is fine
-        # If you keep tight_layout instead:
-        # plt.tight_layout(rect=[0, 0, 1, 0.92])
-
-
-        # # --- Suptitle ---
-        # t0, t1 = d["datetime"].min(), d["datetime"].max()
-        # dur = (t1 - t0)
-        # fig.suptitle(
-        #     f"Timeframe {tf} • {file_id}\n{t0:%Y-%m-%d %H:%M} → {t1:%Y-%m-%d %H:%M}  (Δ={dur})",
-        #     y=1.02,
-        #     fontsize=14,
-        # )
-
-        # # --- Save if requested ---
-        # if save_folder is not None:
-        #     fname = f"{file_id}_frame{tf:02d}.png"
-        #     fig.savefig(save_folder / fname, dpi=200, bbox_inches="tight")
-
-        figs[(file_id, tf)] = fig
-
-    return figs
-
-
-def plot_residuals_from_df_frames(
-    df_frames: pd.DataFrame,
-    *,
-    file_colors: dict | None = None,
-    labels: tuple[str, str] = ("Final", "Initial"),
-    show_initial: bool = False,
-    id_col: str = "id",
-    timeframe_col: str = "timeframe",
-    dt_col: str = "datetime",         # expects datetime already
-    time_col: str = "times",          # optional, only used if datetime missing
-    frame_alpha: float = 1,
-    cmap_name: str = "Pastel1",
-):
-    """
-    Plot RA/DEC residuals using df_frames (which already includes timeframe info).
-
-    Parameters
-    ----------
-    df_frames : pd.DataFrame
-        Must contain columns:
-          - id_col (str)
-          - timeframe_col (int or category)
-          - datetime (datetime) or times (seconds since J2000)
-          - residual_ra_last, residual_dec_last
-        Optionally residual_ra_first, residual_dec_first.
-
-    file_colors : dict, optional
-        Map {id -> color} for scatter points.
-    labels : (str, str)
-        Labels for [final, initial] residuals.
-    show_initial : bool
-        If True, plot initial residuals (if available).
-    id_col : str
-        Column name for observation set identifier.
-    timeframe_col : str
-        Column name for the timeframe index.
-    dt_col : str
-        Datetime column name (if not present, one will be derived from `time_col`).
-    frame_alpha : float
-        Transparency for shaded timeframe backgrounds.
-    cmap_name : str
-        Matplotlib colormap name for timeframe shading.
-
-    Returns
-    -------
-    figs : dict
-        {id_value: matplotlib.figure.Figure}
-    """
-    # J2000 reference (only used if datetime missing)
-    J2000_EPOCH = datetime(2000, 1, 1, 12, 0, 0)
-
-    def ensure_datetime(df):
-        if dt_col in df.columns:
-            return df[dt_col]
-        else:
-            return df[time_col].astype(float).map(lambda s: J2000_EPOCH + timedelta(seconds=float(s)))
-
-    figs = {}
-    unique_ids = pd.unique(df_frames[id_col])
-
-    for file_id in unique_ids:
-        dfi = df_frames[df_frames[id_col] == file_id].copy()
-        if dfi.empty:
-            continue
-
-        dfi = dfi.sort_values(time_col)
-        dfi["__dt__"] = ensure_datetime(dfi)
-
-        # Determine number of timeframes and their ranges
-        grouped = dfi.groupby(timeframe_col, group_keys=True)
-        timeframes = []
-        for tf_id, g in grouped:
-            tmin, tmax = g["__dt__"].min(), g["__dt__"].max()
-            n_obs = len(g)
-            timeframes.append((tf_id, tmin, tmax, n_obs))
-
-        n_frames = len(timeframes)
-        cmap = mpl.cm.get_cmap(cmap_name, max(n_frames, 3))
-
-        # Color for points
-        color = (file_colors or {}).get(file_id, "C0")
-
-        # Create figure
-        fig, ax = plt.subplots(1, 2, figsize=(14, 5), constrained_layout=True)
-
-        # === RA residuals ===
-        ax[0].scatter(dfi["__dt__"], dfi["residual_ra_last"], color=color,
-                      alpha=0.7, s=30, label=labels[0])
-        if show_initial and "residual_ra_first" in dfi.columns:
-            ax[0].scatter(dfi["__dt__"], dfi["residual_ra_first"], color=color,
-                          alpha=0.35, marker="x", s=30, label=labels[1])
-        ax[0].set_xlabel("Observation Epoch", fontsize=12)
-        ax[0].set_ylabel("Simulated - Observed RA [arcseconds]", fontsize=12)
-        ax[0].set_title(f"RA Residuals: {file_id}", fontsize=14)
-        ax[0].grid(True, alpha=0.3)
-        ax[0].axhline(y=0, color="k", linestyle="--", alpha=0.5, linewidth=1)
-
-        # === DEC residuals ===
-        ax[1].scatter(dfi["__dt__"], dfi["residual_dec_last"], color=color,
-                      alpha=0.7, s=30, label=labels[0])
-        if show_initial and "residual_dec_first" in dfi.columns:
-            ax[1].scatter(dfi["__dt__"], dfi["residual_dec_first"], color=color,
-                          alpha=0.35, marker="x", s=30, label=labels[1])
-        ax[1].set_xlabel("Observation Epoch", fontsize=12)
-        ax[1].set_ylabel("Simulated - Observed DEC [arcseconds]", fontsize=12)
-        ax[1].set_title(f"DEC Residuals: {file_id}", fontsize=14)
-        ax[1].grid(True, alpha=0.3)
-        ax[1].axhline(y=0, color="k", linestyle="--", alpha=0.5, linewidth=1)
-
-        # Date formatting
-        locator = mdates.AutoDateLocator()
-        formatter = mdates.ConciseDateFormatter(locator)
-        for a in ax:
-            a.xaxis.set_major_locator(locator)
-            a.xaxis.set_major_formatter(formatter)
-
-        # === Shade background per timeframe ===
-        frame_handles, frame_labels = [], []
-        for i, (tf_id, tmin, tmax, n_obs) in enumerate(timeframes):
-            fc = cmap(i)
-            for a in ax:
-                a.axvspan(tmin, tmax, facecolor=fc, alpha=frame_alpha, zorder=0, linewidth=0)
-            frame_handles.append(Patch(facecolor=fc, edgecolor="none", alpha=frame_alpha))
-            frame_labels.append(f"Frame {tf_id} (n={n_obs})")
-        
-        #from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-
-    #    # pick the 1–2 shortest frames
-    #     N = 1
-    #     short = sorted(timeframes, key=lambda r: (r[2]-r[1]))[:min(N, len(timeframes))]
-    #     for tf_id, tmin, tmax, n_obs in short:
-    #         diff = tmax - tmin
-    #         iax = add_short_frame_inset(ax[0], dfi, tmin-diff, tmax+diff,
-    #                                     y_col="residual_ra_last",
-    #                                     show_initial=show_initial,
-    #                                     y0_col="residual_ra_first")
-    #         # Optional caption inside the inset:
-    #         iax.set_title(f"F{tf_id} (n={n_obs})", fontsize=8, pad=2)
-
-
-        # === Legends ===
-        # # Merge scatter + timeframe legends on RA axis
-        h_pts, l_pts = ax[0].get_legend_handles_labels()
-        if frame_handles:
-            ax[0].legend(h_pts + frame_handles, l_pts + frame_labels, loc="best")
-        else:
-            ax[0].legend(loc="best")
-
-        # Only scatter legend for DEC
-        h_pts_dec, l_pts_dec = ax[1].get_legend_handles_labels()
-        #ax[1].legend(h_pts_dec, l_pts_dec, loc="best")
-
-        # after you build h_pts/l_pts and frame_handles/frame_labels:
-        handles = h_pts + frame_handles
-        labels  = l_pts + frame_labels
-
-        # Put legend outside on the right of RA axis
-        ax[1].legend(
-            handles, labels,
-            loc="right",
-            bbox_to_anchor=(1.5, 0.5),   # push just outside the axes
-            borderaxespad=0.0,
-            frameon=True
-        )
-
-        # Tighten layout so the outside legend fits
-        #fig.tight_layout()
-
-
-        figs[file_id] = fig
-
-    return figs
-
-
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-import matplotlib.dates as mdates
-
-
-def add_short_frame_inset(ax, dfi, tmin, tmax, *,
-                          y_col="residual_ra_last",
-                          show_initial=False, y0_col="residual_ra_first"):
-    # Create inset anchored inside the parent axes (upper-right corner)
-    iax = inset_axes(
-        ax, width="34%", height="34%",
-        loc="upper right",
-        bbox_to_anchor=(0, 0, 1, 1),      # inside the axes box
-        bbox_transform=ax.transAxes,
-        borderpad=0.6
-    )
-
-    m = (dfi["__dt__"] >= tmin) & (dfi["__dt__"] <= tmax)
-    iax.scatter(dfi.loc[m, "__dt__"], dfi.loc[m, y_col], s=18, alpha=0.9)
-    if show_initial and y0_col in dfi.columns:
-        iax.scatter(dfi.loc[m, "__dt__"], dfi.loc[m, y0_col], s=18, alpha=0.5, marker="x")
-
-    # Limit with a little padding
-    pad = (tmax - tmin) / 6
-    iax.set_xlim(tmin - pad, tmax + pad)
-
-    # Tight y-lims with padding
-    y = dfi.loc[m, y_col]
-    if len(y) >= 1:
-        yr = (y.max() - y.min()) if len(y) > 1 else 1.0
-        ypad = 0.2 * (yr if yr > 0 else 1.0)
-        iax.set_ylim(y.min() - ypad, y.max() + ypad)
-
-    # Use a light date formatter with few ticks so labels don’t collide
-    locator = mdates.AutoDateLocator(minticks=3, maxticks=4)
-    iax.xaxis.set_major_locator(locator)
-    iax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
-    iax.tick_params(axis="x", labelsize=8)
-    iax.tick_params(axis="y", labelsize=8)
-    iax.grid(True, alpha=0.25)
-
-    # Title with small pad so it doesn't overlap the frame
-    iax.set_title("", fontsize=9, pad=2)
-    return iax
-
-
-
-import math
-from datetime import datetime, timedelta
-import numpy as np
-import matplotlib.pyplot as plt
-
-def plot_weights_per_id_timeframe(summary, *, facet_by_id=True):
-    """
-    Plot the RA and DEC weights per timeframe for each ID.
-
-    Parameters
-    ----------
-    summary : pd.DataFrame
-        Must include ['id', 'timeframe', 'weight_ra', 'weight_dec'].
-    facet_by_id : bool, default True
-        If True, return {id: fig}; else one combined figure.
-
-    Returns
-    -------
-    dict[str, matplotlib.figure.Figure] | matplotlib.figure.Figure
-    """
-    df = summary.copy()
-    required = {"id", "timeframe", "weight_ra", "weight_dec"}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"summary missing columns: {sorted(missing)}")
-
-    df = df.sort_values(["id", "timeframe"]).reset_index(drop=True)
-
-    # internal helper for one ID
-    def _plot_one(ax, g, title):
-        tfs = g["timeframe"].astype(int).to_numpy()
-        x = np.arange(len(tfs))
-        width = 0.36
-        ax.bar(x - width/2, g["weight_ra"], width, label="RA", alpha=0.85)
-        ax.bar(x + width/2, g["weight_dec"], width, label="DEC", alpha=0.85)
-        ax.set_yscale("log")
-        ax.set_xlabel("Timeframe")
-        ax.set_ylabel("Weight [1/rad²]")
-        ax.set_title(title)
-        ax.set_xticks(x, [str(tf) for tf in tfs])
-        ax.grid(True, axis="y", alpha=0.25)
-        ax.legend(loc="upper right")
-
-    # ---- plot per ID ----
-    if facet_by_id:
-        figs = {}
-        for file_id, g in df.groupby("id", sort=False):
-            fig, ax = plt.subplots(figsize=(8, 4.5), constrained_layout=True)
-            _plot_one(ax, g, f"Weights per timeframe — {file_id}")
-            figs[file_id] = fig
-        return figs
-
-    # ---- combined plot ----
-    fig, ax = plt.subplots(figsize=(10, 5.5), constrained_layout=True)
-    x_positions = []
-    weights_ra = []
-    weights_dec = []
-    labels = []
-
-    x = 0.0
-    gap = 1.0  # spacing between IDs
-    for file_id, g in df.groupby("id", sort=False):
-        g = g.sort_values("timeframe")
-        n = len(g)
-        xs = x + np.arange(n, dtype=float)
-        x_positions.append(xs)
-        weights_ra.append(g["weight_ra"].to_numpy())
-        weights_dec.append(g["weight_dec"].to_numpy())
-        labels.extend([f"{file_id}\nTF {tf}" for tf in g["timeframe"]])
-        x = xs[-1] + gap + 1.0
-
-    if not x_positions:
-        raise ValueError("No data to plot.")
-
-    X = np.concatenate(x_positions)
-    RA = np.concatenate(weights_ra)
-    DE = np.concatenate(weights_dec)
-
-    width = 0.36
-    ax.bar(X - width/2, RA, width, label="RA", alpha=0.85)
-    ax.bar(X + width/2, DE, width, label="DEC", alpha=0.85)
-    ax.set_yscale("log")
-    ax.set_xticks(X, labels, rotation=0)
-    ax.set_xlim(-0.75, X.max() + 0.75)
-    ax.set_xlabel("ID / Timeframe")
-    ax.set_ylabel("Weight [1/rad²]")
-    ax.set_title("Weights per ID & timeframe")
-    ax.grid(True, axis="y", alpha=0.25)
-    ax.legend(loc="upper right")
-    fig.autofmt_xdate(rotation=0)
-
-    return fig
-
-# def plot_average_weight_vs_time(summary, *, split_by_id=False):
-#     """
-#     Plots average weight ((RA+DEC)/2) at each frame midpoint time.
-#     Prefers start_dt/end_dt; falls back to start_sec/end_sec.
-#     Returns:
-#       - dict of {id: Figure} if split_by_id=True
-#       - a single Figure otherwise
-#     """
-#     df = summary.copy()
-#     need = {"id", "weight_ra", "weight_dec"}
-#     if need - set(df.columns):
-#         raise ValueError(f"summary missing columns: {sorted(need - set(df.columns))}")
-
-#     # Build midpoint datetime
-#     if {"start_dt", "end_dt"} <= set(df.columns):
-#         df["mid_dt"] = df["start_dt"] + (df["end_dt"] - df["start_dt"]) / 2
-#     else:
-#         if {"start_sec", "end_sec"} - set(df.columns):
-#             raise ValueError("Need start_dt/end_dt or start_sec/end_sec to compute time midpoints.")
-#         J2000 = datetime(2000, 1, 1, 12, 0, 0)
-#         df["mid_dt"] = df["start_sec"].astype(float).map(lambda s: J2000 + timedelta(seconds=s)) + \
-#                        (df["end_sec"] - df["start_sec"]).astype(float).map(lambda s: timedelta(seconds=s/2))
-
-#     df["weight_mean"] = (df["weight_ra"] + df["weight_dec"]) / 2.0
-
-#     if split_by_id:
-#         figs = {}
-#         for file_id, g in df.groupby("id", sort=False):
-#             fig, ax = plt.subplots(figsize=(8, 4.5), constrained_layout=True)
-#             g = g.sort_values("mid_dt")
-#             ax.plot(g["mid_dt"], g["weight_mean"], marker="o", linestyle="-", alpha=0.8)
-#             ax.set_yscale("log")
-#             ax.set_xlabel("Time")
-#             ax.set_ylabel("Average Weight [1/rad²]")
-#             ax.set_title(f"Average weight vs time — {file_id}")
-#             ax.grid(True, alpha=0.25)
-#             figs[file_id] = fig
-#         return figs
-#     else:
-#         fig, ax = plt.subplots(figsize=(10, 5.5), constrained_layout=True)
-#         for file_id, g in df.groupby("id", sort=False):
-#             g = g.sort_values("mid_dt")
-#             ax.plot(g["mid_dt"], g["weight_mean"], marker="o", linestyle="-", alpha=0.8, label=str(file_id))
-#         ax.set_yscale("log")
-#         ax.set_xlabel("Time")
-#         ax.set_ylabel("Average Weight [1/rad²]")
-#         ax.set_title("Average weight vs time (per-frame midpoint)")
-#         ax.legend(title="ID", bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0.0)
-#         ax.grid(True, alpha=0.25)
-#         return fig
-
-
-
 def plot_average_weight(summary_or_weights: pd.DataFrame, *, split_by_id: bool = False,
-            selected_key = None,logscale=True,title=None):
+            selected_key = None,logscale=True,title=None,label_y=None):
     """
     Takes:
         summary_or_weights: pandas DataFrame either summary or weight like. Contains per timeframe or per id weights/stds
@@ -1846,13 +1085,13 @@ def plot_average_weight(summary_or_weights: pd.DataFrame, *, split_by_id: bool =
             df = df.reset_index().rename(columns={"index": "id"})
 
     # Basic checks
-    need = {"id", "weight_ra", "weight_dec"}
+    need = {"id", "weight_rmse_ra", "weight_rmse_dec","mean_weight_rmse"}
     missing = need - set(df.columns)
     if missing:
         raise ValueError(f"Input is missing columns: {sorted(missing)}")
 
     # Compute average weight
-    df["weight_mean"] = (df["weight_ra"] + df["weight_dec"]) / 2.0
+    #df["weight_mean"] = (df["weight_rmse_ra"] + df["weight_rmse_dec"]) / 2.0
 
     has_dt = {"start_dt", "end_dt"} <= set(df.columns)
     has_sec = {"start_sec", "end_sec"} <= set(df.columns)
@@ -1874,11 +1113,26 @@ def plot_average_weight(summary_or_weights: pd.DataFrame, *, split_by_id: bool =
             for file_id, g in df.groupby("id", sort=False):
                 fig, ax = plt.subplots(figsize=(8, 4.5), constrained_layout=True)
                 g = g.sort_values("mid_dt")
-                ax.plot(g["mid_dt"], g["weight_mean"], marker="o", linestyle="-", alpha=0.8)
-                ax.set_yscale("log")
+
+                if selected_key is not None:
+                    ax.plot(g["mid_dt"], g[selected_key], marker="o", linestyle="-", alpha=0.8)
+                else:
+                    ax.plot(g["mid_dt"], g["mean_weight_rmse"], marker="o", linestyle="-", alpha=0.8)
+                
+                if logscale == True:  
+                    ax.set_yscale("log")
+   
+                if label_y == None:
+                    ax.set_ylabel("Average Weight [1/rad²]")
+                else:
+                    ax.set_ylabel(label_y)
+            
+                if title is None:
+                    ax.set_title(f"Average weight vs time — {file_id}")
+                else:
+                    ax.set_title(title + f" {file_id}")
+                
                 ax.set_xlabel("Time")
-                ax.set_ylabel("Average Weight [1/rad²]")
-                ax.set_title(f"Average weight vs time — {file_id}")
                 ax.grid(True, alpha=0.25)
                 figs[file_id] = fig
             return figs
@@ -1892,18 +1146,22 @@ def plot_average_weight(summary_or_weights: pd.DataFrame, *, split_by_id: bool =
                 if selected_key is not None:
                     ax.plot(g["mid_dt"], g[selected_key], marker="o", linestyle="-", alpha=0.8, label=str(file_id))
                 else:
-                    ax.plot(g["mid_dt"], g["weight_mean"], marker="o", linestyle="-", alpha=0.8, label=str(file_id))
+                    ax.plot(g["mid_dt"], g["mean_weight_rmse"], marker="o", linestyle="-", alpha=0.8, label=str(file_id))
                     
             if logscale == True:  
                 ax.set_yscale("log")
    
             ax.set_xlabel("Time")
-            ax.set_ylabel("Average Weight [1/rad²]")
+            if label_y == None:
+                ax.set_ylabel("Average Weight [1/rad²]")
+            else:
+                ax.set_ylabel(label_y)
+            
             if title is None:
                 ax.set_title("Average weight vs time (per-frame midpoint)")
             else:
                 ax.set_title(title)
-                ax.set_ylabel("Number of observations [-]")
+                #ax.set_ylabel("Number of observations [-]")
             ax.legend(title="ID", bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0.0)
             ax.grid(True, alpha=0.25)
             return fig
@@ -1933,7 +1191,6 @@ def plot_average_weight(summary_or_weights: pd.DataFrame, *, split_by_id: bool =
     ax.grid(True, axis="y", alpha=0.25)
     ax.legend(loc="upper right")
     return fig
-
 
 def plot_average_weight_vs_time_from_weights(
     weights: pd.DataFrame,
@@ -2028,8 +1285,6 @@ def plot_average_weight_vs_time_from_weights(
         ax.grid(True, alpha=0.25)
         return fig
 
-
-
 def plot_residual_std(summary: pd.DataFrame, split_by_id: bool = False):
     """
     Plot standard deviations of residuals over time.
@@ -2039,8 +1294,8 @@ def plot_residual_std(summary: pd.DataFrame, split_by_id: bool = False):
     summary : pd.DataFrame
         Must contain:
         - 'id': observation file identifier
-        - 'residual_ra_last_std': RA standard deviation
-        - 'residual_dec_last_std': DEC standard deviation
+        - 'residual_ra_std': RA standard deviation
+        - 'residual_dec_std': DEC standard deviation
         - Time columns (one of):
             * 'start_dt' & 'end_dt' (datetime)
             * 'start_sec' & 'end_sec' (seconds since J2000)
@@ -2058,7 +1313,7 @@ def plot_residual_std(summary: pd.DataFrame, split_by_id: bool = False):
     df = summary.copy()
     
     # Check required columns
-    required = {'id', 'residual_ra_last_std', 'residual_dec_last_std'}
+    required = {'id', 'residual_ra_std', 'residual_dec_std'}
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
@@ -2074,7 +1329,6 @@ def plot_residual_std(summary: pd.DataFrame, split_by_id: bool = False):
         return plot_separate_figures(df)
     else:
         return plot_combined_figure(df)
-
 
 def add_midpoint_time(df):
     """Add midpoint datetime column."""
@@ -2100,7 +1354,6 @@ def add_midpoint_time(df):
     
     return df
 
-
 def plot_separate_figures(df):
     """Create one figure per ID."""
     
@@ -2113,14 +1366,14 @@ def plot_separate_figures(df):
                                        sharex=True, constrained_layout=True)
         
         # RA std
-        ax1.plot(df_id['mid_dt'], df_id['residual_ra_last_std'], 
+        ax1.plot(df_id['mid_dt'], df_id['residual_ra_std'], 
                 marker='o', linestyle='-', color='C0', alpha=0.7)
         ax1.set_ylabel('RA Std [arcsec]', fontsize=11)
         ax1.set_title(f'Residual Standard Deviations — {file_id}', fontsize=13)
         ax1.grid(True, alpha=0.3)
         
         # DEC std
-        ax2.plot(df_id['mid_dt'], df_id['residual_dec_last_std'], 
+        ax2.plot(df_id['mid_dt'], df_id['residual_dec_std'], 
                 marker='o', linestyle='-', color='C1', alpha=0.7)
         ax2.set_xlabel('Time', fontsize=11)
         ax2.set_ylabel('DEC Std [arcsec]', fontsize=11)
@@ -2129,7 +1382,6 @@ def plot_separate_figures(df):
         figs[file_id] = fig
     
     return figs
-
 
 def plot_combined_figure(df):
     """Create one figure with all IDs."""
@@ -2141,11 +1393,11 @@ def plot_combined_figure(df):
         df_id = df[df['id'] == file_id]
         
         # RA std
-        ax1.plot(df_id['mid_dt'], df_id['residual_ra_last_std'], 
+        ax1.plot(df_id['mid_dt'], df_id['residual_ra_std'], 
                 marker='o', linestyle='-', alpha=0.7, label=str(file_id))
        
         # DEC std
-        ax2.plot(df_id['mid_dt'], df_id['residual_dec_last_std'], 
+        ax2.plot(df_id['mid_dt'], df_id['residual_dec_std'], 
                 marker='o', linestyle='-', alpha=0.7, label=str(file_id))
     
     ax1.set_yscale('log')
@@ -2171,7 +1423,7 @@ def plot_residuals(df, summary=None, plot_individual_frames=False):
     df : pd.DataFrame
         Must contain: id, datetime, residual_ra_last, residual_dec_last, timeframe
     summary : pd.DataFrame, optional
-        Summary statistics with: id, timeframe, start_dt, residual_ra_last_std, residual_dec_last_std
+        Summary statistics with: id, timeframe, start_dt, residual_ra_std, residual_dec_std
     plot_individual_frames : bool, optional
         If True, creates individual subplots for each timeframe (default: False)
     
@@ -2260,7 +1512,7 @@ def plot_residuals(df, summary=None, plot_individual_frames=False):
             ax_sum_dec = axes[current_row, 1]
             
             # RA std over time
-            ax_sum_ra.plot(sum_data['start_dt'], sum_data['residual_ra_last_std'], 
+            ax_sum_ra.plot(sum_data['start_dt'], sum_data['residual_ra_std'], 
                           marker='o', linewidth=2, markersize=8)
             ax_sum_ra.axhline(overall_ra_std, color='red', linestyle='--', 
                              linewidth=2, alpha=0.7, label=f'Overall Std: {overall_ra_std:.4f}"')
@@ -2271,7 +1523,7 @@ def plot_residuals(df, summary=None, plot_individual_frames=False):
             #ax_sum_ra.legend()
             
             # DEC std over time
-            ax_sum_dec.plot(sum_data['start_dt'], sum_data['residual_dec_last_std'], 
+            ax_sum_dec.plot(sum_data['start_dt'], sum_data['residual_dec_std'], 
                            marker='o', linewidth=2, markersize=8)
             ax_sum_dec.axhline(overall_dec_std, color='red', linestyle='--', 
                               linewidth=2, alpha=0.7, label=f'Overall Std: {overall_dec_std:.4f}"')
@@ -2419,7 +1671,7 @@ if __name__ == "__main__":
     #--------------------------------------------------------------------------------------------
     # LOAD ESTIMATION RESULTS
     #--------------------------------------------------------------------------------------------
-    arrays = load_npy_files("Results/BetterFigs/AllModernObservations/First") 
+    arrays = load_npy_files("Results/AllModernObservations/First") 
     
     print("Loaded numpy arrays from estimation...")
     nr_observations = []
@@ -2437,7 +1689,7 @@ if __name__ == "__main__":
         arrays['residual_history_arcseconds'])
     
     #Load results without outliers
-    arrays2 = load_npy_files("Results/BetterFigs/AllModernObservations/TimeFrameWeights_50mas_min")
+    arrays2 = load_npy_files("Results/AllModernObservations/TimeFrameWeights_50mas_min")
     
     print("Loaded previous numpy arrays from estimation...")
     nr_observations = []
@@ -2483,7 +1735,7 @@ if __name__ == "__main__":
     #     file_colors = pickle.load(f)
 
     
-    out_dir = make_timestamped_folder("Results/BetterFigs/AllModernObservations/PostProcessing")
+    out_dir = make_timestamped_folder("Results/PostProcessing")
     
     make_figures = True
     if make_figures == True:
@@ -2552,7 +1804,7 @@ if __name__ == "__main__":
         #individual_figs = plot_individual_RA_DEC_residuals(df,file_colors) 
         #individual_figs_demeaned = plot_individual_RA_DEC_residuals_demeaned(df,file_colors)
         #--------------------------------------------------------------------------------------------
-        make_residual_figures = True
+        make_residual_figures = False
         if make_residual_figures == True:
             figs = plot_residuals(df_frames,summary,plot_individual_frames=False)
 
@@ -2576,14 +1828,22 @@ if __name__ == "__main__":
     else:
         print("Plotting is turned off. Continuing...")
     #--------------------------------------------------------------------------------------------
-    # COMPUTE WEIGHTS
+    # COMPUTE ID WEIGHTS
     #--------------------------------------------------------------------------------------------
-    print("Computing weights...")
+    print("Computing ID weights...")
 
     #Compute std in arcseconds
     std_per_id = df.groupby("id")[["residual_ra_last", "residual_dec_last"]].std().rename(
         columns={"residual_ra_last": "std_ra", "residual_dec_last": "std_dec"}
     )
+
+    # Compute RMSE in arcseconds
+    rmse_per_id = (
+        df.groupby("id")[["residual_ra_last", "residual_dec_last"]]
+        .apply(lambda g: np.sqrt((g**2).mean()))
+        .rename(columns={"residual_ra_last": "rmse_ra", "residual_dec_last": "rmse_dec"})
+    )
+
 
     # Files with 1 Id (NaN stds) have an STD assigned as 1 arcsecond
     std_per_id = std_per_id.fillna(1)
@@ -2591,38 +1851,41 @@ if __name__ == "__main__":
     # Convert to radians
     arcsec_to_rad = np.pi / (180.0 * 3600.0)
     std_per_id_rad = std_per_id * arcsec_to_rad
+    rmse_per_id_rad = rmse_per_id * arcsec_to_rad
 
-    # Compute weights = 1 / σ²
-    weights = 1.0 / (std_per_id_rad ** 2)
-    weights.columns = ["weight_ra", "weight_dec"]
+    # Compute weights = 1 / σ² std or rmse
+    weights_std = 1.0 / (std_per_id_rad ** 2)
+    weights_std.columns = ["weight_ra", "weight_dec"]
 
-    weight_for_arcsec = 1/arcsec_to_rad**2
-    #weights.fillna(weight_for_arcsec, inplace=True)
+    weights_rmse = 1.0 / (rmse_per_id_rad ** 2)
+    weights_rmse.columns = ["weight_ra", "weight_dec"]
+
 
     # Save to file
-    weights.to_csv(out_dir / "weights.txt", sep="\t", float_format="%.8e")
-
+    weights_std.to_csv(out_dir / "weights_per_id_std.txt", sep="\t", float_format="%.8e")
+    weights_rmse.to_csv(out_dir / "weights_per_id_rmse.txt", sep="\t", float_format="%.8e")
+    
 
     #--------------------------------------------------------------------------------------------
-    # Replace NaNs stds of frames with 1 observation
+    # COMPUTE TIMEFRAME WEIGHTS
     #--------------------------------------------------------------------------------------------
     replacement_for_id = {}
     usage_stats = {}
 
     DEFAULT = 1  # fallback if an id has no valid stds
 
-
+    # Replace STD NaNs with appropriate values 
     for id, g in summary.groupby("id"):
         total_obs = g["n_obs"].sum()
 
         # masks for valid stds
-        ra_mask = g["residual_ra_last_std"].notna()
-        dec_mask = g["residual_dec_last_std"].notna()
+        ra_mask = g["residual_ra_std"].notna()
+        dec_mask = g["residual_dec_std"].notna()
 
         # weighted sums and totals (ignore NaNs)
-        ra_weight_sum = (g.loc[ra_mask, "residual_ra_last_std"] * g.loc[ra_mask, "n_obs"]).sum()
+        ra_weight_sum = (g.loc[ra_mask, "residual_ra_std"] * g.loc[ra_mask, "n_obs"]).sum()
         ra_n_used = g.loc[ra_mask, "n_obs"].sum()
-        dec_weight_sum = (g.loc[dec_mask, "residual_dec_last_std"] * g.loc[dec_mask, "n_obs"]).sum()
+        dec_weight_sum = (g.loc[dec_mask, "residual_dec_std"] * g.loc[dec_mask, "n_obs"]).sum()
         dec_n_used = g.loc[dec_mask, "n_obs"].sum()
 
         # weighted means (fallback to weights DataFrame if nothing valid)
@@ -2630,8 +1893,8 @@ if __name__ == "__main__":
         dec_mean = dec_weight_sum / dec_n_used if dec_n_used > 0 else std_per_id.loc[id,'std_dec']
 
         replacement_for_id[id] = {
-            "residual_ra_last_std": float(ra_mean),
-            "residual_dec_last_std": float(dec_mean),
+            "residual_ra_std": float(ra_mean),
+            "residual_dec_std": float(dec_mean),
         }
 
         usage_stats[id] = {
@@ -2642,13 +1905,14 @@ if __name__ == "__main__":
             "dec_excluded": int(total_obs - dec_n_used),
         }
 
+    # Useful stats to check if replacement of NaNs makes sense
     usage_df = pd.DataFrame.from_dict(usage_stats, orient='index')
 
 
     def fill_two_cols(group):
         rep = replacement_for_id[group.name]
-        group[["residual_ra_last_std","residual_dec_last_std"]] = (
-            group[["residual_ra_last_std","residual_dec_last_std"]].fillna(rep)
+        group[["residual_ra_std","residual_dec_std"]] = (
+            group[["residual_ra_std","residual_dec_std"]].fillna(rep)
         )
         return group
 
@@ -2658,100 +1922,292 @@ if __name__ == "__main__":
     #--------------------------------------------------------------------------------------------
     # Created tabulated weights
     #--------------------------------------------------------------------------------------------
-    #Compute weight per id and timeframe:
-    min_sigma_arcsec = 0.05   # 10mas minimum
+    
+    #Add rmse and std per id to summary
+    summary = summary.merge(
+    rmse_per_id.rename(columns={'rmse_ra': 'rmse_ra_id', 'rmse_dec': 'rmse_dec_id'}),
+    on='id',
+    how='left')
 
+    summary = summary.merge(
+    std_per_id.rename(columns={'std_ra': 'std_ra_id', 'std_dec': 'std_dec_id'}),
+    on='id',
+    how='left')
 
+    # Add ID weights to summary
+    summary = summary.merge(
+    weights_rmse.rename(columns={'weight_ra': 'weight_rmse_ra_id', 'weight_dec': 'weight_rmse_dec_id'}),
+    on='id',
+    how='left')
 
-    sigma_ra = summary['residual_ra_last_std'].astype(float).copy()
-    sigma_dec = summary['residual_dec_last_std'].astype(float).copy()
+    summary = summary.merge(
+    weights_std.rename(columns={'weight_ra': 'weight_std_ra_id', 'weight_dec': 'weight_std_dec_id'}),
+    on='id',
+    how='left')
 
+    # Minimum accuracy
+    min_sigma_arcsec = 0.005   # 5mas minimum
+
+    
+    sigma_ra = summary['residual_ra_std'].astype(float).copy()
+    sigma_dec = summary['residual_dec_std'].astype(float).copy()
+
+    rmse_ra = summary['residual_ra_rms'].astype(float).copy()
+    rmse_dec = summary['residual_dec_rms'].astype(float).copy()
+    
     if min_sigma_arcsec > 0:
         sigma_ra = sigma_ra.clip(lower=min_sigma_arcsec)
         sigma_dec = sigma_dec.clip(lower=min_sigma_arcsec)
+        
+        rmse_ra = rmse_ra.clip(lower=min_sigma_arcsec)
+        rmse_dec = rmse_dec.clip(lower=min_sigma_arcsec)
+        
 
-    summary['residual_ra_last_std'] = sigma_ra
-    summary['residual_dec_last_std'] = sigma_dec
-    # arcsec -> rad
+    summary['residual_ra_std'] = sigma_ra
+    summary['residual_dec_std'] = sigma_dec
+    
+    summary['residual_ra_rms'] = rmse_ra
+    summary['residual_dec_rms'] = rmse_dec
+    
+    #average of tf and id RMSE
+    summary['residual_ra_rms_tf_id'] = (summary['residual_ra_rms'] +  summary['rmse_ra_id'])/2
+    summary['residual_dec_rms_tf_id'] = (summary['residual_dec_rms'] +  summary['rmse_dec_id'])/2
+
+
+    #--------------------------------------------------------------------------------------------
+    # Compute arcsec to rad
+
     arcsec_to_rad = np.pi / (180.0 * 3600.0)
+
+    #STD weights
     sigma_ra_rad  = sigma_ra * arcsec_to_rad
     sigma_dec_rad = sigma_dec * arcsec_to_rad
 
-    # weights = 1 / σ²
-    summary['weight_ra']  = 1.0 / (sigma_ra_rad ** 2)
-    summary['weight_dec'] = 1.0 / (sigma_dec_rad ** 2)
+    summary['weight_std_ra']  = 1.0 / (sigma_ra_rad ** 2)
+    summary['weight_std_dec'] = 1.0 / (sigma_dec_rad ** 2)
 
-    # Replace inf with NaN if any σ==0 survived (No NaNs should exist)
-    #summary.replace([np.inf, -np.inf], np.nan, inplace=True)
+    #RMS weights
+    rmse_ra_rad  = summary['residual_ra_rms'] * arcsec_to_rad
+    rmse_dec_rad = summary['residual_ra_rms'] * arcsec_to_rad
 
-    # Compute per-id mean weights (ignoring NaNs)
-    mean_weights = (
-            summary.groupby("id")[["weight_ra", "weight_dec"]]
-            .transform(lambda x: x.fillna(x.mean()))
-            )
+    summary['weight_rmse_ra']  = 1.0 / (rmse_ra_rad ** 2)
+    summary['weight_rmse_dec'] = 1.0 / (rmse_dec_rad ** 2)
 
-    # Replace NaNs in the original dataframe with these means
-    #summary[["weight_ra", "weight_dec"]] = mean_weights
+    #RMS weights TF ID
+    rmse_ra_rad  = summary['residual_ra_rms_tf_id'] * arcsec_to_rad
+    rmse_dec_rad = summary['residual_dec_rms_tf_id'] * arcsec_to_rad
 
-    summary['mean_weight'] = summary[['weight_ra', 'weight_dec']].mean(axis=1)
+    summary['weight_rmse_tf_id_ra']  = 1.0 / (rmse_ra_rad ** 2)
+    summary['weight_rmse_tf_id_dec'] = 1.0 / (rmse_dec_rad ** 2)
+
+
+
+    #--------------------------------------------------------------------------------------------
+    # Compute mean weight
     
-    #summary.loc[summary['mean_weight'].isna(), ['weight_ra', 'weight_dec', 'mean_weight']] = 1e10
+    summary['mean_weight_std'] = summary[['weight_std_ra', 'weight_std_dec']].mean(axis=1)
+    summary['mean_weight_rmse'] = summary[['weight_rmse_ra', 'weight_rmse_dec']].mean(axis=1)
     
-    # Created scaled weights
-    summary['weight_ra_scaled'] = summary['weight_ra'] / np.sqrt(summary['n_obs'])
-    summary['weight_dec_scaled'] = summary['weight_dec'] / np.sqrt(summary['n_obs'])
-    summary['mean_weight_scaled'] = summary[['weight_ra_scaled', 'weight_dec_scaled']].mean(axis=1)
+
+    # Create descale per night weights std
+    summary['weight_std_ra_scaled'] = summary['weight_std_ra'] / np.sqrt(summary['n_obs'])
+    summary['weight_std_dec_scaled'] = summary['weight_std_dec'] / np.sqrt(summary['n_obs'])
+
+    summary['mean_weight_std_scaled'] = summary[['weight_std_ra_scaled', 'weight_std_dec_scaled']].mean(axis=1)
+
+    # Create descale per night weights rmse
+    summary['weight_rmse_ra_scaled'] = summary['weight_rmse_ra'] / np.sqrt(summary['n_obs'])
+    summary['weight_rmse_dec_scaled'] = summary['weight_rmse_dec'] / np.sqrt(summary['n_obs'])
+
+    summary['mean_weight_rmse_scaled'] = summary[['weight_rmse_ra_scaled', 'weight_rmse_dec_scaled']].mean(axis=1)
+
+
+    # Create descaled per night weights rmse ID 
+    summary['weight_rmse_ra_id_scaled'] = summary['weight_rmse_ra_id'] / np.sqrt(summary['n_obs'])
+    summary['weight_rmse_dec_id_scaled'] = summary['weight_rmse_dec_id'] / np.sqrt(summary['n_obs'])
+
+    summary['mean_weight_rmse_id_scaled'] = summary[['weight_rmse_ra_id_scaled', 'weight_rmse_dec_id_scaled']].mean(axis=1)
+
+    # Create descaled per night weights std ID 
+    summary['weight_std_ra_id_scaled'] = summary['weight_std_ra_id'] / np.sqrt(summary['n_obs'])
+    summary['weight_std_dec_id_scaled'] = summary['weight_std_dec_id'] / np.sqrt(summary['n_obs'])
+
+    summary['mean_weight_std_id_scaled'] = summary[['weight_std_ra_id_scaled', 'weight_std_dec_id_scaled']].mean(axis=1)
+
+
+
+    # Create descaled per night weights rmse Hybrid ID TF 
+    summary['weight_rmse_ra_tf_id_scaled'] = summary['weight_rmse_tf_id_ra'] / np.sqrt(summary['n_obs'])
+    summary['weight_rmse_dec_tf_id_scaled'] = summary['weight_rmse_tf_id_dec'] / np.sqrt(summary['n_obs'])
+
+    summary['mean_weight_rmse_tf_id_scaled'] = summary[['weight_rmse_ra_tf_id_scaled', 'weight_rmse_dec_tf_id_scaled']].mean(axis=1)
+
+
+
+
+    # Compute difference between std and rmse metric
+    summary["ra_diff_id"] = summary["rmse_ra_id"] - summary["std_ra_id"]
+    summary["dec_diff_id"] = summary["rmse_dec_id"] - summary["std_dec_id"]
+
+
+
+
+
+    # Compute differences for timeframes
+    summary["ra_diff"] = summary["residual_ra_rms"] - summary["residual_ra_std"]
+    summary["dec_diff"] = summary["residual_dec_rms"] - summary["residual_dec_std"]
+
 
     summary.to_csv(out_dir / "summary.txt", sep="\t", float_format="%.8e")
 
 
-    
-    # Assign weights
+
+
+
+    #--------------------------------------------------------------------------------------------
+    # Check if weights can be assigned from summary
+    #--------------------------------------------------------------------------------------------
     observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations(
             "Observations/RelativeObservations/",
             system_of_bodies,file_names_loaded,
             weights = summary,
-            timeframe_weights=True)
-
-
-
-    #tabulated_weights = []
-    # for id_name in summary['id'].unique():
-    #     group = summary[summary['id'] == id_name]
-    #     expanded = group.loc[group.index.repeat(group['n_obs'])]
-    #     weights = expanded['mean_weight'].values
-    #     tabulated_weights.append(weights)
-
-    # np.save(out_dir / 'tabulated_weights.npy', np.array(tabulated_weights, dtype=object))
-
-
-
-
-
+            timeframe_weights=True,
+            per_night_weights_hybrid=True)
     #--------------------------------------------------------------------------------------------
     # Plot Weight Figures
     #--------------------------------------------------------------------------------------------
     make_weight_figures = True
     if make_weight_figures == True:
         print("plotting weight figures...")
+
+        #----------------------------
+        # weight plots
+        #----------------------------
         fig_weights_per_time = plot_average_weight(summary, split_by_id=False)
-
-        fig_weights_per_file = plot_average_weight_vs_time_from_weights(weights, summary, split_by_id=False)
-
+        #fig_weights_per_file = plot_average_weight_vs_time_from_weights(weights, summary, split_by_id=False)
         fig_std_per_timeframe = plot_residual_std(summary)
+        fig_per_night_weights = plot_average_weight(summary,
+                split_by_id=False,selected_key="mean_weight_rmse_scaled",title="Descaled Weight per timeframe (night)")
 
-        fig_count_per_timeframe = plot_average_weight(summary, split_by_id = False,selected_key = "n_obs",logscale=False,title="Number of Observations per Timeframe")
 
-        fig_per_night_weights = plot_average_weight(summary,split_by_id=False,selected_key="mean_weight_scaled",title="Descaled Weight per timeframe (night)")
 
         fig_weights_per_time.savefig(out_dir / "fig_weights_per_time.pdf")
-        fig_weights_per_file.savefig(out_dir / "fig_weights_per_id.pdf")
+        #fig_weights_per_file.savefig(out_dir / "fig_weights_per_id.pdf")
         fig_std_per_timeframe.savefig(out_dir / "fig_std_per_timeframe.pdf")
-        fig_count_per_timeframe.savefig(out_dir / "fig_count_per_timeframe.pdf")
         fig_per_night_weights.savefig(out_dir / "fig_weights_per_night.pdf")
         
+        #----------------------------
+        # Plot number of observations
+        #----------------------------
+        fig_count_per_timeframe = plot_average_weight(
+                summary, 
+                split_by_id = False,
+                selected_key = "n_obs",
+                logscale=False,
+                title="Number of Observations per Timeframe",
+                label_y="Number of observations [-]")
+        fig_count_per_timeframe.savefig(out_dir / "fig_count_per_timeframe.pdf")
+        #----------------------------
+        # Plot differences per timeframe
+        #----------------------------
+        ra_diff_per_timeframe = plot_average_weight(
+                summary,
+                split_by_id = False,
+                selected_key = "ra_diff",
+                logscale=False,
+                title="RA STD - RMS difference per Timeframe",
+                label_y="STD - RMS [arcs]")
+
+        dec_diff_per_timeframe = plot_average_weight(
+                    summary,
+                    split_by_id = False,
+                    selected_key = "dec_diff",
+                    logscale=False,
+                    title="DEC STD - RMS difference per Timeframe",
+                    label_y = "STD - RMS [arcs]")
+        
+        ra_diff_per_timeframe.savefig(out_dir / "diff_timeframe_rmse_std_ra.pdf")
+        dec_diff_per_timeframe.savefig(out_dir / "diff_timeframe_rmse_std_dec.pdf")
+
+        #----------------------------
+        # Plot differences per id
+        #----------------------------
+        ra_diff_per_id = plot_average_weight(
+                summary,
+                split_by_id = True,
+                selected_key = "ra_diff_id",
+                logscale=False,
+                title="RA STD - RMS difference per ID",
+                label_y="STD - RMS [arcs]")
+
+        dec_diff_per_id = plot_average_weight(
+                    summary,
+                    split_by_id = True,
+                    selected_key = "dec_diff_id",
+                    logscale=False,
+                    title="DEC STD - RMS difference per ID",
+                    label_y = "STD - RMS [arcs]")
+
+        ra_diff_per_id.savefig(out_dir / "diff_id_rmse_std_ra.pdf")
+        dec_diff_per_id.savefig(out_dir / "diff_id_rmse_std_dec.pdf")
+
+        # for file_id, fig in ra_diff_per_id.items():
+        #     fig.savefig(out_dir / (file_id + 'diff_id_rmse_std_ra.pdf'))
+        # for file_id, fig in dec_diff_per_id.items():
+        #     fig.savefig(out_dir / (file_id + 'diff_id_rmse_std_dec.pdf'))
+        
+        #----------------------------
+        # Plot differences RMSE id vs timeframe
+        #----------------------------
+        # Compute differences for timeframes
+        summary["ra_diff_id_tf"] = summary["residual_ra_rms"] - summary["rmse_ra_id"]
+        summary["dec_diff_id_tf"] = summary["residual_dec_rms"] - summary["rmse_dec_id"]
+
+
+
+        ra_diff_per_id_tf = plot_average_weight(
+                summary,
+                split_by_id = False,
+                selected_key = "ra_diff_id_tf",
+                logscale=False,
+                title="RA ID - TF for RMSE",
+                label_y="Diff RMSE [arcs]")
+
+        dec_diff_per_id_tf = plot_average_weight(
+                    summary,
+                    split_by_id = False,
+                    selected_key = "dec_diff_id_tf",
+                    logscale=False,
+                    title="DEC ID - TF for RMSE",
+                    label_y = "RMSE [arcs]")
+
+
+
+        ra_diff_per_id_tf.savefig(out_dir / "diff_id_tf_rmse_ra.pdf")
+        dec_diff_per_id_tf.savefig(out_dir / "diff_id_tf_rmse_dec.pdf")
+
+
+
+        fig_weights_id_rmse_norm = plot_average_weight(summary,
+        split_by_id=False,selected_key="mean_weight_rmse_id",title="RMSE Weight per ID (night)")
+
+
+        fig_weights_id_rmse = plot_average_weight(summary,
+        split_by_id=False,selected_key="mean_weight_rmse_id_scaled",title="Descaled RMSE Weight per ID (night)")
+
+
+        fig_weights_id_std = plot_average_weight(summary,
+        split_by_id=False,selected_key="mean_weight_std_id_scaled",title="Descaled STD Weight per ID (night)")
+
+
+        fig_weights_id_rmse_norm.savefig(out_dir / "id_rmse_weight_not_descaled.pdf")
+        fig_weights_id_rmse.savefig(out_dir / "id_rmse_weight.pdf")
+        fig_weight_id_std.savefig(out_dir / "id_std_weight.pdf")
+
+
     else:
         print("plotting disabled, not making weight figures.")
 
 
     print("end")
+

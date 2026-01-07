@@ -92,6 +92,22 @@ def main(settings: dict,out_dir):
 
     body_settings,system_of_bodies = PropFuncs.Create_Env(settings_env)
 
+
+    
+    start_epoch = settings_env["start_epoch"]
+    end_epoch = settings_env["end_epoch"]
+    step_size = settings_prop['fixed_step_size']
+    epochs = np.arange(start_epoch, end_epoch + step_size, step_size)
+
+    # Get Neptune rotation model
+    nep_rot_model = system_of_bodies.get("Neptune").rotation_model
+
+    # Generate all rotation matrices at once
+    rotation_matrices = np.array([
+        nep_rot_model.body_fixed_to_inertial_rotation(epoch) 
+        for epoch in epochs
+    ])
+
     ##############################################################################################
     # CREATE ACCELERATION MODELS  
     ##############################################################################################
@@ -122,8 +138,11 @@ def main(settings: dict,out_dir):
                         system_of_bodies,
                         files,
                         weights = settings["obs"]["weights"],
+                        std_weights = settings["obs"]["std_weights"],
                         timeframe_weights = settings["obs"]['timeframe_weights'],
-                        per_night_weights = settings["obs"]['per_night_weights'])
+                        per_night_weights = settings["obs"]['per_night_weights'],
+                        per_night_weights_id = settings["obs"]["per_night_weights_id"],
+                        per_night_weights_hybrid = settings["obs"]["per_night_weights_hybrid"])
         else:
             observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations(
                         observations_folder_path,
@@ -448,7 +467,11 @@ if __name__ == "__main__":
     settings_env["global_frame_orientation"] = global_frame_orientation
     settings_env["interpolator_triton_cadance"] = 60*8
     settings_env["neptune_extended_gravity"] = "Jacobson2009"
-
+    settings_env['Neptune_rot_model_type'] = 'IAU2015' 
+    # Model Type for rotation model of Neptune:
+    #  none - simple spice,
+    #  'spice' - full spice,
+    #  'IAU2015' - based on the IAU2015 paper
     #--------------------------------------------------------------------------------------------
     # ACCELERATION SETTINGS 
     #--------------------------------------------------------------------------------------------
@@ -493,7 +516,7 @@ if __name__ == "__main__":
     settings_obs = dict()
     settings_obs["mode"] = ["pos"]
     settings_obs["bodies"] = [("Triton", "Neptune")]                           # bodies to observe
-    settings_obs["cadence"] = 60*60*3 # Every 3 hours
+    settings_obs["cadence"] = 60*60*24 # Every 24 hours
     settings_obs["type"] = "Simulated" # Simulated or Real observations
 
     settings_obs["files"] = file_names_loaded             
@@ -502,9 +525,11 @@ if __name__ == "__main__":
     weights = weights.reset_index()
 
     settings_obs["use_weights"] = True
-    settings_obs["mean_reduced_weights"] = False
-    settings_obs["per_night_weights"] = False
+    settings_obs['std_weights'] = True
     settings_obs["timeframe_weights"] = True
+    settings_obs["per_night_weights"] = False
+    settings_obs["per_night_weights_id"] = True 
+    settings_obs['per_night_weights_hybrid'] = True
     settings_obs["weights"] = weights
     
     #--------------------------------------------------------------------------------------------
@@ -514,7 +539,7 @@ if __name__ == "__main__":
     settings_est = dict()
     #settings_est['pseudo_observations_settings'] = pseudo_observations_settings
     #settings_est['pseudo_observations'] = pseudo_observations
-    settings_est['est_parameters'] = ['initial_state','Rotation_Pole_Position_Neptune'] #,'Rotation_Pole_Position_Neptune'] #, 'Rotation_Pole_Position_Neptune']
+    settings_est['est_parameters'] = ['initial_state'] #,'Rotation_Pole_Position_Neptune'] #,'Rotation_Pole_Position_Neptune'] #, 'Rotation_Pole_Position_Neptune']
 
 
     
@@ -527,7 +552,7 @@ if __name__ == "__main__":
     settings["est"] = settings_est
    
 
-    main(settings,make_timestamped_folder("Results/BetterFigs/SimulatedObservations"))
+    main(settings,make_timestamped_folder("Results/PoleSimObservations"))
 
 
     #path_list = ["PoleOrientation/SimpleRotationModel/residuals_rsw.npy","PoleOrientation/EstimationSimpleRotationModel/residuals_rsw.npy"]
