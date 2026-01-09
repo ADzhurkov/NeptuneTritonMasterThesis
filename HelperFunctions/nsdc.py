@@ -235,7 +235,7 @@ def return_standardised_rotation_ECLIPJ2000(RA_rad, DEC_rad, epoch,
 
     # Rotation from J2000 to ECLIPJ2000
     RA_EJ2000, DEC_EJ2000 = J2000_2_ECLIPJ2000(RA_J2000, DEC_J2000)
-    return RA_EJ2000, DEC_EJ2000
+    return RA_EJ2000, DEC_EJ2000 #RA_J2000, DEC_J2000
 
 ############################################################################################
 ###########################     NSDC FILE READING FUNCTION    ##############################
@@ -451,7 +451,7 @@ def create_nsdc_observation_set(file,bodies,targets_to_use):
 
     moon_name = nsdc_moon_name(Moon);
     if not bodies.does_body_exist(moon_name):
-        body_setting = environment_setup.get_default_body_settings([moon_name],"SSB",'ECLIPJ2000')
+        body_setting = environment_setup.get_default_body_settings([moon_name],"SSB",'J2000')
         body_setting.get(moon_name).gravity_field_settings = environment_setup.gravity_field.central(10**(9))    #Dummy value, irrelevant for entire process
         new_body = environment_setup.create_system_of_bodies(body_setting)
         bodies.add_body(body_to_add= new_body.get(moon_name), body_name = moon_name)
@@ -499,7 +499,7 @@ def create_nsdc_observation_collection(files,bodies,targets_to_use=[]):
 ############################################################################################
 
 
-def analyse_nsdc_data(times,observations, moons, observatories, bodies, plotting,standard_orientation):
+def analyse_nsdc_data(times,observations, moons, observatories, bodies, plotting,standard_orientation,global_frame_origin='Earth'):
     '''
     Analysing the processed observations
 
@@ -544,7 +544,7 @@ def analyse_nsdc_data(times,observations, moons, observatories, bodies, plotting
         'obs' + str(observatories[i]),
         bodies
         )
-        RA_spice, DEC_spice = get_angle_rel_body(time_representation.date_time_from_epoch(times[i]),'ECLIPJ2000',observatory_ephemerides, moons[i],standard_orientation)
+        RA_spice, DEC_spice = get_angle_rel_body(time_representation.date_time_from_epoch(times[i]),standard_orientation,observatory_ephemerides, moons[i],standard_orientation,global_frame_origin)
         RA, DEC = observations[i]
         diflist.append([RA-RA_spice,DEC-DEC_spice])
     means = np.mean(diflist, axis=0)
@@ -565,7 +565,7 @@ def analyse_nsdc_data(times,observations, moons, observatories, bodies, plotting
         plt.show()       
     return means, stddevs, diflist 
 
-def remove_nsdc_outliers(times, observations, moons, observatories, bodies,standard_orientation, outlier_limit = 3, plotting= False):
+def remove_nsdc_outliers(times, observations, moons, observatories, bodies,standard_orientation, outlier_limit = 3, plotting= False,global_frame_origin='Earth'):
     '''
     Removing outliers from the dataset
 
@@ -616,10 +616,10 @@ def remove_nsdc_outliers(times, observations, moons, observatories, bodies,stand
         standard deviation of difference between spice and observed for RA and DEC
     '''
     
-    means, stddevs, diflist = analyse_nsdc_data(times, observations, moons, observatories, bodies, False,standard_orientation)
+    means, stddevs, diflist = analyse_nsdc_data(times, observations, moons, observatories, bodies, False,standard_orientation,global_frame_origin)
 
     # DOMINIC: essetnially removed filtering
-    outlier_indices = [i for i, nested_list in enumerate(diflist) if any(abs(x) > 2.5E-3 for x, mean, std_dev in zip(nested_list, means, stddevs))]
+    outlier_indices = [i for i, nested_list in enumerate(diflist) if any(abs(x) > 25 for x, mean, std_dev in zip(nested_list, means, stddevs))] #return to 2.5E-3 !!!
     
     # Identify outliers
     #outlier_indices = []
@@ -642,7 +642,7 @@ def remove_nsdc_outliers(times, observations, moons, observatories, bodies,stand
 
 
 
-    means, stddevs, diflist = analyse_nsdc_data(filtered_times, filtered_observations, filtered_moons, filtered_observatories, bodies, False,standard_orientation)
+    means, stddevs, diflist = analyse_nsdc_data(filtered_times, filtered_observations, filtered_moons, filtered_observatories, bodies, False,standard_orientation,global_frame_origin)
     print('Means:', means, 'Stddevs:', stddevs)
 
     if plotting == True:
@@ -1044,7 +1044,8 @@ def get_angle_rel_body(epoch,orientation,observatory_ephemerides, relative_body,
         position_correction = observatory_ephemerides.cartesian_state(epoch.epoch()) - spice.get_body_cartesian_state_at_epoch("Earth","SSB",orientation,"None",epoch.epoch())
     else:
         print("Unsuported global frame origin: ",global_frame_origin)
-    rot_mat = spice.compute_rotation_matrix_between_frames(standard_orientation,orientation,epoch.epoch())
+
+    rot_mat = spice.compute_rotation_matrix_between_frames(standard_orientation,orientation,epoch.epoch()) #could this be the problem when the orientations are the same?
     position_corrected = position-np.concatenate([rot_mat@position_correction[:3],rot_mat@position_correction[3:]])
     spherical = element_conversion.cartesian_to_spherical(position_corrected) 
 
@@ -1109,6 +1110,14 @@ def generate_standard_nsdc_environment(central_body, standard_orientation, extra
     global_frame_orientation = standard_orientation
     body_settings = environment_setup.get_default_body_settings(
         bodies_to_create, global_frame_origin, global_frame_orientation)
+
+    #Set the approriate rotation model for Earth
+    precession_nutation_theory = environment_setup.rotation_model.IAUConventions.iau_2006
+    #original_frame = "J2000"
+    # create rotation model settings and assign to body settings of "Earth"
+    body_settings.get( "Earth" ).rotation_model_settings = environment_setup.rotation_model.gcrs_to_itrs(
+    precession_nutation_theory, global_frame_orientation)
+    
     for moon in standard_moons:
         body_settings.get( moon ).ephemeris_settings = environment_setup.ephemeris.direct_spice( global_frame_origin, global_frame_orientation )
         body_settings.get( moon ).gravity_field_settings = environment_setup.gravity_field.central(10**(9))    #Dummy value, irrelevant for entire process
@@ -1120,7 +1129,7 @@ def generate_standard_nsdc_environment(central_body, standard_orientation, extra
 
 
 #Angle process functions
-def process_relative_nsdc_observation(values,RA_entry,DEC_entry,body,relative_body,orientation,observatory,epoch,data_type,bodies,standard_orientation):                   #Optional function for processing the relative data
+def process_relative_nsdc_observation(values,RA_entry,DEC_entry,body,relative_body,orientation,observatory,epoch,data_type,bodies,standard_orientation,global_frame_origin='Earth'):                   #Optional function for processing the relative data
     '''
     Converts a relative observation into an absolute one    
 
@@ -1165,7 +1174,7 @@ def process_relative_nsdc_observation(values,RA_entry,DEC_entry,body,relative_bo
         'obs' + str(observatory),
         bodies
         )
-    RA_relative, DEC_relative = get_angle_rel_body(epoch,orientation,observatory_ephemerides,relative_body, standard_orientation)
+    RA_relative, DEC_relative = get_angle_rel_body(epoch,orientation,observatory_ephemerides,relative_body, standard_orientation,global_frame_origin)
     
     if data_type=='REL':
         Delta_DEC = 1/3600* values[DEC_entry]
@@ -1404,7 +1413,7 @@ def save_nsdc_data_to_csv(times, RADEC, moons, observatories, studyname, diflist
                 for j in range(len(epochs)):
                     writer.writerow([epochs[j], observations[j][0], observations[j][1], difs[j][0], difs[j][1]])
 
-def process_nsdc_file(filename,analyse, standard_orientation,savepath):
+def process_nsdc_file(filename,analyse, standard_orientation,savepath,global_frame_origin='Earth'):
     print('processing', filename)
     '''
     Meta function to fully process a file from reading to saving as seperate csv files per observed body-observatory combination
@@ -1438,14 +1447,18 @@ def process_nsdc_file(filename,analyse, standard_orientation,savepath):
         for skips in range(16):
             next(datafile)
 
-        bodies = generate_standard_nsdc_environment(central_body, standard_orientation)
+        bodies = generate_standard_nsdc_environment(central_body, standard_orientation,global_frame_origin=global_frame_origin)
         # Read each remaining line in the file
         for observation in datafile: 
             #print(observation)
             body, observatory, values = read_nsdc_file_line(observation,number_observatories,observatory,observatory_entrace,moon_entry,central_body)
             epoch = return_standardised_time(values,time_entry,time_scale,amount_time_entries,time_delta,time_type)
             RA_rad, DEC_rad = return_standardised_angles(values,RA_entry,DEC_entry,body,relative_body_entry,orientation,observatory,epoch,data_type,central_body,bodies,standard_orientation)
-            RA_EJ2000, DEC_EJ2000 = return_standardised_rotation_ECLIPJ2000(RA_rad,DEC_rad,epoch,orientation)
+            
+            if orientation == 'J2000' and standard_orientation == 'J2000':
+                RA_EJ2000,DEC_EJ2000 = RA_rad,DEC_rad
+            else:
+                RA_EJ2000, DEC_EJ2000 = return_standardised_rotation_ECLIPJ2000(RA_rad,DEC_rad,epoch,orientation) #This would return ECLIPJ2000 no matter standard_orientation !!!
 
             ### Saving extracted values
             data.append(values)
@@ -1453,7 +1466,7 @@ def process_nsdc_file(filename,analyse, standard_orientation,savepath):
             RADEC.append([RA_EJ2000,DEC_EJ2000])
             moons.append(body)
             observatories.append(observatory)
-    times, RADEC, moons, observatories, diflist, rms, means, stddevs = remove_nsdc_outliers(times, RADEC, moons, observatories, bodies,standard_orientation, 3, analyse)
+    times, RADEC, moons, observatories, diflist, rms, means, stddevs = remove_nsdc_outliers(times, RADEC, moons, observatories, bodies,standard_orientation, 3, analyse,global_frame_origin=global_frame_origin)
     #if (abs(means[0]) < stddevs[0] and abs(means[1]) <stddevs[1]):
     print("Generating csv file: ",studyname)
     save_nsdc_data_to_csv(times, RADEC, moons, observatories, studyname, diflist, savepath)

@@ -262,7 +262,7 @@ def LoadObservations(
 
 
 
-def Get_SPICE_residual_from_observations(observations,Observatories,system_of_bodies):
+def Get_SPICE_residual_from_observations(observations,Observatories,system_of_bodies,global_frame_orientation='ECLIPJ2000'):
     observation_times_all = observations.get_observation_times()
 
     #Does not work
@@ -285,13 +285,12 @@ def Get_SPICE_residual_from_observations(observations,Observatories,system_of_bo
             )
 
 
-            RA_spice, DEC_spice = nsdc.get_angle_rel_body(DateTime.from_epoch(observation_times[i]),'ECLIPJ2000',observatory_ephemerides, "Triton",'ECLIPJ2000',global_frame_origin="SSB")
+            RA_spice, DEC_spice = nsdc.get_angle_rel_body(DateTime.from_epoch(observation_times[i]),global_frame_orientation,observatory_ephemerides, "Triton",global_frame_orientation,global_frame_origin="SSB")
             RA, DEC = reshaped_observations_list[i]
             diflist.append([RA-RA_spice,DEC-DEC_spice])
-
+  
     diflist = np.array(diflist)
-
-
+  
     uncertainty_ra_SPICE = diflist[:,0] * 180/np.pi * 3600 
     uncertainty_dec_SPICE = diflist[:,1] * 180/np.pi * 3600 
     uncertainty_SPICE = [uncertainty_ra_SPICE,uncertainty_dec_SPICE]

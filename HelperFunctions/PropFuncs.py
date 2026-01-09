@@ -75,27 +75,27 @@ def Create_Env(settings_dict):
 # SELECT ROTATION MODEL NEPTUNE
 #---------------------------------------------------------------------------------------------------------------------------------------------------   
     # create rotation model settings and assign to body settings of "Neptune"
-    body_settings.get( "Neptune" ).rotation_model_settings = environment_setup.rotation_model.simple_from_spice(
-            original_frame, target_frame, target_frame_spice, start_epoch)
+    if settings_dict['Neptune_rot_model_type'] == 'simple_from_spice':
+        body_settings.get( "Neptune" ).rotation_model_settings = environment_setup.rotation_model.simple_from_spice(
+                original_frame, target_frame, target_frame_spice, start_epoch)
 
-
-    if settings_dict['Neptune_rot_model_type'] == 'spice':
+    elif settings_dict['Neptune_rot_model_type'] == 'spice':
         body_settings.get( "Neptune" ).rotation_model_settings = environment_setup.rotation_model.spice(
                 original_frame, target_frame, target_frame_spice)
     
     # IAU 2015 (2018)
     elif settings_dict['Neptune_rot_model_type'] == 'IAU2015':
-        nominal_meridian = 249.978 # W_0
-        nominal_pole = np.array([299.36,43.46]) #alpha_0 and delta_0
-        rotation_rate=541.1397757/24/3600 # W_0_dot (in paper it's multipled by day so /24/3600 should align with tudat check!)
+        nominal_meridian = np.deg2rad(249.978) # W_0
+        nominal_pole = np.deg2rad(np.array([299.36,43.46])) #alpha_0 and delta_0
+        rotation_rate=np.deg2rad(541.1397757/24/3600) # W_0_dot (in paper it's multipled by day so /24/3600 should align with tudat check!)
         pole_precession= np.array([0,0]) # alpha_0_dot and delta_0_dot are 0
-        merdian_periodic_terms = {52.316: (-0.48, 357.85)} #w_N_i, W_i, Phi_N_i in that order
+        merdian_periodic_terms = {np.deg2rad(52.316/36525/24/3600): (np.deg2rad(-0.48), np.deg2rad(357.85))} #w_N_i, W_i, Phi_N_i in that order
 
         # Values for alpha and delta from IAU 2015
-        w_n_i = 52.316
-        alpha_i = 0.7
-        delta_i = -0.51
-        phi = 357.85
+        w_n_i = np.deg2rad(52.316/36525/24/3600)
+        alpha_i = np.deg2rad(0.7)
+        delta_i = np.deg2rad(-0.51)
+        phi = np.deg2rad(357.85)
 
         # Create the numpy array for [alpha_i, delta_i] as a 2x1 column vector
         alpha_delta = np.array([alpha_i, delta_i])
@@ -108,7 +108,7 @@ def Create_Env(settings_dict):
 
 
         body_settings.get( "Neptune" ).rotation_model_settings = environment_setup.rotation_model.iau_rotation_model(
-                original_frame, target_frame, nominal_meridian,nominal_pole,rotation_rate,pole_precession,merdian_periodic_terms,pole_periodic_terms)
+                original_frame, target_frame, nominal_meridian,nominal_pole,rotation_rate,pole_precession,merdian_periodic_terms,pole_periodic_terms,angle_base_frame="J2000")
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -363,8 +363,15 @@ def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings,
 
     parameters_to_estimate_settings = parameters_setup.initial_states(propagator_settings, system_of_bodies)
     
+    #Only use with simple rotational model!
     if "Rotation_Pole_Position_Neptune" in settings_dict["est_parameters"]:
         parameters_to_estimate_settings.append(parameters_setup.rotation_pole_position('Neptune'))
+    
+    #Only use with IAU rotational model
+    if 'iau_rotation_model_pole' in settings_dict["est_parameters"]:
+        parameters_to_estimate_settings.append(parameters_setup.iau_rotation_model_pole('Neptune'))
+    if 'iau_rotation_model_pole_rate' in settings_dict['est_parameters']:
+        parameters_to_estimate_settings.append(parameters_setup.iau_rotation_model_pole_rate('Neptune'))
 
 
     parameters_to_estimate = parameters_setup.create_parameter_set(

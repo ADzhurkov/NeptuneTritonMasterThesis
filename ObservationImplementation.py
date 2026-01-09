@@ -194,7 +194,7 @@ def main(settings: dict,out_dir):
         spice.get_body_cartesian_state_at_epoch(
             target_body_name="Triton",
             observer_body_name="Neptune",
-            reference_frame_name="ECLIPJ2000",
+            reference_frame_name=global_frame_orientation,
             aberration_corrections="NONE",
             ephemeris_time=epoch
         )
@@ -239,7 +239,7 @@ def main(settings: dict,out_dir):
 
         observation_times_DateFormat = FigUtils.ConvertToDateTime(observation_times)
                 
-        residuals = ObsFunc.Get_SPICE_residual_from_observations(observations,Observatories,system_of_bodies)
+        residuals = ObsFunc.Get_SPICE_residual_from_observations(observations,Observatories,system_of_bodies,global_frame_orientation)
         residuals_RA_SPICE = residuals[0]
         residuals_DEC_SPICE = residuals[1]
 
@@ -449,10 +449,10 @@ def make_timestamped_folder(base_path="Results"):
 if __name__ == "__main__":
         
     # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
-    simulation_start_epoch = DateTime(1963, 1,  1).epoch() #2006, 8,  27 1963, 3,  4  
+    simulation_start_epoch = DateTime(2020, 1,  1).epoch() #2006, 8,  27 1963, 3,  4  
     simulation_end_epoch   = DateTime(2025, 1, 1).epoch()   #2006, 9, 2 2019, 10, 1
     
-    simulation_initial_epoch = DateTime(2006, 10, 1).epoch()
+    simulation_initial_epoch = DateTime(2020, 10, 1).epoch() #2006, 10, 1
     global_frame_origin = 'SSB'
     global_frame_orientation = 'ECLIPJ2000'
 
@@ -467,11 +467,14 @@ if __name__ == "__main__":
     settings_env["global_frame_orientation"] = global_frame_orientation
     settings_env["interpolator_triton_cadance"] = 60*8
     settings_env["neptune_extended_gravity"] = "Jacobson2009"
+
+
     settings_env['Neptune_rot_model_type'] = 'IAU2015' 
-    # Model Type for rotation model of Neptune:
-    #  none - simple spice,
-    #  'spice' - full spice,
-    #  'IAU2015' - based on the IAU2015 paper
+        # Model Type for rotation model of Neptune:
+        #  'simple_from_spice' - simple spice,
+        #  'spice' - full spice,
+        #  'IAU2015' - based on the IAU2015 paper
+        
     #--------------------------------------------------------------------------------------------
     # ACCELERATION SETTINGS 
     #--------------------------------------------------------------------------------------------
@@ -516,33 +519,39 @@ if __name__ == "__main__":
     settings_obs = dict()
     settings_obs["mode"] = ["pos"]
     settings_obs["bodies"] = [("Triton", "Neptune")]                           # bodies to observe
-    settings_obs["cadence"] = 60*60*24 # Every 24 hours
+    settings_obs["cadence"] = 60*60*3 # Every 3 hours
     settings_obs["type"] = "Simulated" # Simulated or Real observations
 
     settings_obs["files"] = file_names_loaded             
-    settings_obs["observations_folder_path"] = "Observations/RelativeObservations"  #MoreObservationsNovember
+    settings_obs["observations_folder_path"] = "Observations/AllModernECLIPJ2000"  #RelativeObservations AllModernECLIPJ2000 AllModernJ2000
 
     weights = weights.reset_index()
-
-    settings_obs["use_weights"] = True
-    settings_obs['std_weights'] = True
-    settings_obs["timeframe_weights"] = True
+    
+    settings_obs["use_weights"] = False
+    settings_obs['std_weights'] = False
+    settings_obs["timeframe_weights"] = False
     settings_obs["per_night_weights"] = False
-    settings_obs["per_night_weights_id"] = True 
-    settings_obs['per_night_weights_hybrid'] = True
+    settings_obs["per_night_weights_id"] = False 
+    settings_obs['per_night_weights_hybrid'] = False
     settings_obs["weights"] = weights
     
     #--------------------------------------------------------------------------------------------
-    # OBSERVATION SETTINGS 
+    # ESTIMATION SETTINGS 
     #--------------------------------------------------------------------------------------------
 
     settings_est = dict()
     #settings_est['pseudo_observations_settings'] = pseudo_observations_settings
     #settings_est['pseudo_observations'] = pseudo_observations
-    settings_est['est_parameters'] = ['initial_state'] #,'Rotation_Pole_Position_Neptune'] #,'Rotation_Pole_Position_Neptune'] #, 'Rotation_Pole_Position_Neptune']
-
-
     
+
+    settings_est['est_parameters'] = ['initial_state','iau_rotation_model_pole'] 
+        #Possible settings: 
+        # initial state - default
+        # Rotation_Pole_Position_Neptune - fixed rotation pole position (only with simple rotational model !)
+        # iau_rotation_model_pole - rotation pole position (alpha,delta) with IAU rotation model
+        # iau_rotation_model_pole_rate - rotation pole rate  (alpha_dot, delta_dot) with IAU rotation model
+        
+        
     #fill in settings 
     settings = dict()
     settings["env"] = settings_env

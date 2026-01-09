@@ -1637,7 +1637,7 @@ if __name__ == "__main__":
     simulation_start_epoch = DateTime(1960, 1,  1).epoch()
     simulation_end_epoch   = DateTime(2025, 1, 1).epoch()
     global_frame_origin = 'SSB'
-    global_frame_orientation = 'ECLIPJ2000'
+    global_frame_orientation = 'J2000'
 
     #--------------------------------------------------------------------------------------------
     # ENVIORONMENT SETTINGS 
@@ -1650,7 +1650,7 @@ if __name__ == "__main__":
     settings_env["global_frame_orientation"] = global_frame_orientation
     settings_env["interpolator_triton_cadance"] = 60*8
     settings_env["neptune_extended_gravity"] = "Jacobson2009"
-
+    settings_env['Neptune_rot_model_type'] = 'spice' 
 
     body_settings,system_of_bodies = PropFuncs.Create_Env(settings_env)
 
@@ -1665,13 +1665,13 @@ if __name__ == "__main__":
 
 
     data = []
-    observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/MoreObservationsNovember/",system_of_bodies,file_names_loaded)
+    observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/AllModernJ2000/",system_of_bodies,file_names_loaded)
 
     print("Loaded tudat observations...")
     #--------------------------------------------------------------------------------------------
     # LOAD ESTIMATION RESULTS
     #--------------------------------------------------------------------------------------------
-    arrays = load_npy_files("Results/AllModernObservations/First") 
+    arrays = load_npy_files("Results/AllModernJ2000Frame/First") 
     
     print("Loaded numpy arrays from estimation...")
     nr_observations = []
@@ -1735,7 +1735,7 @@ if __name__ == "__main__":
     #     file_colors = pickle.load(f)
 
     
-    out_dir = make_timestamped_folder("Results/PostProcessing")
+    out_dir = make_timestamped_folder("Results/AllModernJ2000Frame/PostProcessing")
     
     make_figures = True
     if make_figures == True:

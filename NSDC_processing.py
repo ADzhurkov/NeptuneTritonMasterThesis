@@ -60,7 +60,7 @@ folder_path_rel = "Observations/RawRelativeObservations/"
 raw_observation_files_rel = [os.path.join(folder_path_rel, f) for f in os.listdir(folder_path_rel) if f.endswith('.txt')]
 
 
-folder_path_csv = "Observations/RelativeObservations/" 
+folder_path_csv = "Observations/AllModernJ2000/" 
 observation_files_csv = [os.path.join(folder_path_csv, f) for f in os.listdir(folder_path_csv) if f.endswith('.csv')]
 
 #----------------------------------------------------------------------------------------------------------------------------
@@ -89,11 +89,11 @@ for i in range(len(raw_observation_files)):
         print("Skipping already processed file...",suffix)
     else:
         print("Currently processing: ",file)
-        nsdc.process_nsdc_file(file,True, 'ECLIPJ2000',folder_path_csv)
+        nsdc.process_nsdc_file(file,True, 'J2000',folder_path_csv,global_frame_origin='Earth')
 
 
 #----------------------------------------------------------------------------------------------------------------------------
-# Process relative files
+# Process relative files5
 suffixes_rel = []
 for i in range(len(raw_observation_files_rel)):
     file = raw_observation_files_rel[i]
@@ -104,7 +104,7 @@ for i in range(len(raw_observation_files_rel)):
         print("Skipping already processed file...",suffix)
     else:
         print("Currently processing: ",file)
-        nsdc.process_nsdc_file(file,True, 'ECLIPJ2000',folder_path_csv)
+        nsdc.process_nsdc_file(file,True, 'J2000',folder_path_csv,global_frame_origin='Earth')
 
 
 print(suffixes_rel)

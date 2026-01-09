@@ -187,12 +187,12 @@ if __name__ == "__main__":
 
 
     # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
-    simulation_start_epoch = DateTime(2000, 1,  1).epoch()  #1963, 1,  1  
+    simulation_start_epoch = DateTime(1963, 1,  1 ).epoch()  #1963, 1,  1  
     simulation_end_epoch   = DateTime(2025, 1, 1).epoch()   #2006, 9, 2 2019, 10, 1
     
     simulation_initial_epoch = DateTime(2006, 10, 1).epoch()
     global_frame_origin = 'SSB'
-    global_frame_orientation = 'J2000' # ECLIPJ2000 default frame switch when done with experimenting !!
+    global_frame_orientation = 'ECLIPJ2000' # ECLIPJ2000 default frame switch when done with experimenting !!
 
     #--------------------------------------------------------------------------------------------
     # ENVIORONMENT SETTINGS 
@@ -252,15 +252,15 @@ if __name__ == "__main__":
         # Define all experiment variants here only once
         VARIANTS = {
             "simple_rot_model": {
-                "simulation_path": "Results/PoleSimObservations/SinglePropAnalysis/J2000/simple_rot_model",
+                "simulation_path": "Results/PoleSimObservations/SinglePropAnalysis/ECLIPJ2000/simple_rot_model",
                 'rotation_model': None
             }, 
             "full_spice_rot_model": {
-                "simulation_path": "Results/PoleSimObservations/SinglePropAnalysis/J2000/full_spice_rot_model",
+                "simulation_path": "Results/PoleSimObservations/SinglePropAnalysis/ECLIPJ2000/full_spice_rot_model",
                 'rotation_model': "spice"
             },
             "IAU_rot_model": {
-                "simulation_path": "Results/PoleSimObservations/SinglePropAnalysis/J2000/IAU_rot_model",
+                "simulation_path": "Results/PoleSimObservations/SinglePropAnalysis/ECLIPJ2000/IAU_rot_model",
                 'rotation_model': "IAU2015"
             },                              
         }
