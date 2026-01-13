@@ -372,6 +372,25 @@ def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings,
         parameters_to_estimate_settings.append(parameters_setup.iau_rotation_model_pole('Neptune'))
     if 'iau_rotation_model_pole_rate' in settings_dict['est_parameters']:
         parameters_to_estimate_settings.append(parameters_setup.iau_rotation_model_pole_rate('Neptune'))
+    if 'GM_Neptune' in settings_dict['est_parameters']:
+        parameters_to_estimate_settings.append(parameters_setup.gravitational_parameter('Neptune'))
+    if 'GM_Triton' in settings_dict['est_parameters']:
+        parameters_to_estimate_settings.append(parameters_setup.gravitational_parameter('Triton'))
+
+    if 'spherical_harmonics' in settings_dict['est_parameters']:
+        block_indices = [
+        (2, 0),  # C20 (J2)
+        (4, 0)   # C40 (J4)
+        ]
+
+        # Create the estimatable parameter for these specific coefficients
+        parameters_to_estimate_settings.append(
+            parameters_setup.spherical_harmonics_c_coefficients_block(
+                body="Neptune",
+                block_indices=block_indices
+            )
+        )
+
 
 
     parameters_to_estimate = parameters_setup.create_parameter_set(

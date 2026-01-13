@@ -90,14 +90,14 @@ def main(settings: dict,out_dir):
     # CREATE ENVIRONMENT  
     ##############################################################################################
 
-    body_settings,system_of_bodies = PropFuncs.Create_Env(settings_env)
+    body_settings,system_of_bodies = PropFuncs.Create_Env(settings['env'])
 
 
     
-    start_epoch = settings_env["start_epoch"]
-    end_epoch = settings_env["end_epoch"]
-    step_size = settings_prop['fixed_step_size']
-    epochs = np.arange(start_epoch, end_epoch + step_size, step_size)
+    simulation_start_epoch = settings['env']["start_epoch"]
+    simulation_end_epoch = settings['env']["end_epoch"]
+    step_size = settings['prop']['fixed_step_size']
+    epochs = np.arange(simulation_start_epoch, simulation_end_epoch + step_size, step_size)
 
     # Get Neptune rotation model
     nep_rot_model = system_of_bodies.get("Neptune").rotation_model
@@ -112,13 +112,13 @@ def main(settings: dict,out_dir):
     # CREATE ACCELERATION MODELS  
     ##############################################################################################
 
-    acceleration_models,accelerations_cfg = PropFuncs.Create_Acceleration_Models(settings_acc,system_of_bodies)
+    acceleration_models,accelerations_cfg = PropFuncs.Create_Acceleration_Models(settings['acc'],system_of_bodies)
 
     ##############################################################################################
     # CREATE PROPAGATOR
     ##############################################################################################
 
-    propagator_settings = PropFuncs.Create_Propagator_Settings(settings_prop,acceleration_models)
+    propagator_settings = PropFuncs.Create_Propagator_Settings(settings['prop'],acceleration_models)
 
     ##############################################################################################
     # CREATE PSEUDO OR LOAD REAL OBSERVATIONS
@@ -164,7 +164,7 @@ def main(settings: dict,out_dir):
     ##############################################################################################
 
 
-    estimation_output, original_parameter_vector= PropFuncs.Create_Estimation_Output(settings_est,
+    estimation_output, original_parameter_vector= PropFuncs.Create_Estimation_Output(settings['est'],
     system_of_bodies,propagator_settings,observations_settings,observations)
 
     print("END OF ESTIMATION")
@@ -173,20 +173,30 @@ def main(settings: dict,out_dir):
     # RETRIEVE INFO
     ##############################################################################################
 
-    state_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.state_history_float
+    state_history = estimation_output.simulation_results_per_iteration[estimation_output.best_iteration].dynamics_results.state_history_float
     state_history_array = util.result2array(state_history)
 
     state_history_initial = estimation_output.simulation_results_per_iteration[0].dynamics_results.state_history_float
     state_history_initial_array = util.result2array(state_history_initial)
 
-    dep_vars_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.dependent_variable_history
+    dep_vars_history = estimation_output.simulation_results_per_iteration[estimation_output.best_iteration].dynamics_results.dependent_variable_history
     dep_vars_array = util.result2array(dep_vars_history)
 
+    #Get all results
+    arrays = []
+    for i in range(5):
+        state_history_current = (
+            estimation_output.simulation_results_per_iteration[i]
+            .dynamics_results.state_history_float
+        )
+        arrays.append(util.result2array(state_history_current))
+
+    state_history_array_full = np.stack(arrays, axis=0)
     ##############################################################################################
     # GET SPICE OBSERVATIONS
     ##############################################################################################
 
-    fixed_step_size = settings_prop["fixed_step_size"]
+    fixed_step_size = settings['prop']["fixed_step_size"]
     
     # Get Triton's state relative to Neptune SPICE
     epochs = state_history_array[:,0]  #np.arange(simulation_start_epoch, simulation_end_epoch+60*5, fixed_step_size ) #test_settings_obs["cadence"]
@@ -194,7 +204,7 @@ def main(settings: dict,out_dir):
         spice.get_body_cartesian_state_at_epoch(
             target_body_name="Triton",
             observer_body_name="Neptune",
-            reference_frame_name=global_frame_orientation,
+            reference_frame_name=settings['env']["global_frame_orientation"],
             aberration_corrections="NONE",
             ephemeris_time=epoch
         )
@@ -391,7 +401,29 @@ def main(settings: dict,out_dir):
         
 
 
+        ##############################################################################################
+        #PLOT PARAMETER UPDATE
+        ##############################################################################################
+        
+        parameter_history = estimation_output.parameter_history
+        best_iteration = estimation_output.best_iteration
+        correlations = estimation_output.correlations
 
+        best_parameter_update = parameter_history[:,0] - parameter_history[:,best_iteration]
+
+        np.save(out_dir / "parameter_history.npy", parameter_history)
+        np.save(out_dir / "best_iteration.npy",best_iteration)
+        np.save(out_dir / "correlations.npy",correlations)    
+
+
+        fig = FigUtils.plot_correlation_matrix(correlations, settings['est']['est_parameters'])
+        fig.savefig(out_dir / 'correlations.pdf')
+
+        fig1 = FigUtils.plot_parameter_updates(best_parameter_update,  settings['est']['est_parameters'])
+        fig1.savefig(out_dir / "parameter_update.pdf")
+        
+        fig2 = FigUtils.plot_parameter_history(parameter_history, settings['est']['est_parameters'], best_iteration=best_iteration)
+        fig2.savefig(out_dir / "parameter_history.pdf")
         #--------------------------------------------------------------------------
         #Get Different Flavors of FFTs
         #--------------------------------------------------------------------------
@@ -421,6 +453,7 @@ def main(settings: dict,out_dir):
         fft_fig_Jonas.savefig(out_dir / "fft_Jonas.pdf")
 
         fft_fig_Spectrum.savefig(out_dir / "fft_spectrum.pdf")
+
         #----------------------------------------------------------------------------------------------
         # Save residuals as numpy files
         arr = np.stack(residuals_rsw, axis=0)   # shape (5, 254, 4)
@@ -429,8 +462,10 @@ def main(settings: dict,out_dir):
         arr2 = np.stack(residuals_j2000,axis=0)
         np.save(out_dir / "residuals_j2000.npy", arr2)
         
+        arr1 = np.stack(state_history_array, axis=0)
+        np.save(out_dir / "state_history_array.npy", arr1)
 
-
+        np.save(out_dir / "state_history_array_full.npy",state_history_array_full)
 
     #Remove Pandas Data frame of the weights from the settings to be able to save and reduce file size
     settings['obs'].pop('weights', None)
@@ -449,10 +484,10 @@ def make_timestamped_folder(base_path="Results"):
 if __name__ == "__main__":
         
     # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
-    simulation_start_epoch = DateTime(2020, 1,  1).epoch() #2006, 8,  27 1963, 3,  4  
+    simulation_start_epoch = DateTime(2024, 1,  1).epoch() #2006, 8,  27 1963, 3,  4  
     simulation_end_epoch   = DateTime(2025, 1, 1).epoch()   #2006, 9, 2 2019, 10, 1
     
-    simulation_initial_epoch = DateTime(2020, 10, 1).epoch() #2006, 10, 1
+    simulation_initial_epoch = DateTime(2024, 10, 1).epoch() #2006, 10, 1
     global_frame_origin = 'SSB'
     global_frame_orientation = 'ECLIPJ2000'
 
@@ -550,7 +585,9 @@ if __name__ == "__main__":
         # Rotation_Pole_Position_Neptune - fixed rotation pole position (only with simple rotational model !)
         # iau_rotation_model_pole - rotation pole position (alpha,delta) with IAU rotation model
         # iau_rotation_model_pole_rate - rotation pole rate  (alpha_dot, delta_dot) with IAU rotation model
-        
+        # GM_Neptune - Gravitational Parameter of Neptune (GM_Neptune)
+        # GM_Triton - Gravitational Parameter of Triton (GM_Triton)
+        # spherical_harmonics - C20 and C40 spherical harmonics gravity of Neptune 
         
     #fill in settings 
     settings = dict()

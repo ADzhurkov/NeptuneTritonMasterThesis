@@ -946,3 +946,532 @@ def plot_RA_DEC_residuals(observation_times_DateFormat,
         fig.savefig(save_path, bbox_inches='tight')
 
     return fig
+
+
+
+
+
+# ##############################################################################################
+# # Correlation plots
+# ##############################################################################################
+
+def plot_correlation_matrix(correlations, est_parameters, sh_degree=None, sh_order=None, 
+                        title="Parameter Correlation Matrix", figsize=(12, 10)):
+    """
+        Plot correlation matrix with proper labels based on estimation parameters.
+        
+        Parameters:
+        -----------
+        correlations : array
+            Correlation matrix with shape (n, n)
+        est_parameters : list
+            List of estimated parameters. Can include:
+            - 'initial_state'
+            - 'iau_rotation_model_pole'
+            - 'iau_rotation_model_pole_rate'
+            - 'gm_neptune'
+            - 'gm_triton'
+            - 'spherical_harmonics'
+        sh_degree : int, optional
+            Maximum degree for spherical harmonics (if included)
+        sh_order : int, optional
+            Maximum order for spherical harmonics (if included)
+        title : str
+            Plot title
+        figsize : tuple
+            Figure size (width, height)
+        
+        Returns:
+        --------
+        fig : matplotlib figure
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    # Generate parameter labels based on est_parameters
+    labels = []
+    
+    for param in est_parameters:
+        if param == 'initial_state':
+            labels.extend(['x', 'y', 'z', 'vx', 'vy', 'vz'])
+        
+        elif param == 'iau_rotation_model_pole':
+            labels.extend(['α₀', 'δ₀'])
+        
+        elif param == 'iau_rotation_model_pole_rate':
+            labels.extend(['α̇₀', 'δ̇₀'])
+        
+        elif param == 'GM_Neptune':
+            labels.append('GM_Nep')
+        
+        elif param == 'GM_Triton':
+            labels.append('GM_Tri')
+        
+        elif param == 'spherical_harmonics':
+            labels.extend(['C20', 'C40'])
+            
+    
+    # Verify label count matches correlation matrix size
+    n = correlations.shape[0]
+    if len(labels) != n:
+        print(f"Warning: Generated {len(labels)} labels but correlation matrix has size {n} in plot_correlation_matrix")
+        # Pad with generic labels if needed
+        if len(labels) < n:
+            labels.extend([f'Param_{i}' for i in range(len(labels), n)])
+        else:
+            labels = labels[:n]
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Plot correlation matrix
+    im = ax.imshow(correlations, cmap='RdBu_r', vmin=-1, vmax=1, aspect='auto')
+    
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label('Correlation Coefficient', fontsize=12)
+    
+    # Set ticks and labels
+    ax.set_xticks(np.arange(n))
+    ax.set_yticks(np.arange(n))
+    ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=10)
+    ax.set_yticklabels(labels, fontsize=10)
+    
+    # Add correlation values as text
+    for i in range(n):
+        for j in range(n):
+            corr_val = correlations[i, j]
+            
+            # Choose text color based on background
+            text_color = 'white' if abs(corr_val) > 0.5 else 'black'
+            
+            # Format correlation value
+            text = f'{corr_val:.2f}'
+            
+            ax.text(j, i, text, ha='center', va='center', 
+                   color=text_color, fontsize=8, fontweight='bold')
+    
+    # Add title
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+    
+    # Add grid
+    ax.set_xticks(np.arange(n) - 0.5, minor=True)
+    ax.set_yticks(np.arange(n) - 0.5, minor=True)
+    ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5, alpha=0.3)
+    
+    plt.tight_layout()
+    
+    return fig
+
+
+def get_parameter_groups(est_parameters, correlations, sh_degree=None, sh_order=None):
+    """
+    Get parameter grouping information for better visualization.
+    
+    Parameters:
+    -----------
+    est_parameters : list
+        List of estimated parameters
+    correlations : array
+        Correlation matrix
+    sh_degree, sh_order : int, optional
+        Spherical harmonics degree and order
+    
+    Returns:
+    --------
+    dict : Dictionary with parameter groups and their index ranges
+    """
+    groups = {}
+    current_idx = 0
+    
+    for param in est_parameters:
+        if param == 'initial_state':
+            groups['Initial State'] = (current_idx, current_idx + 6)
+            current_idx += 6
+        
+        elif param == 'iau_rotation_model_pole':
+            groups['Pole Position'] = (current_idx, current_idx + 2)
+            current_idx += 2
+        
+        elif param == 'iau_rotation_model_pole_rate':
+            groups['Pole Rate'] = (current_idx, current_idx + 2)
+            current_idx += 2
+        
+        elif param == 'GM_Neptune':
+            groups['GM Neptune'] = (current_idx, current_idx + 1)
+            current_idx += 1
+        
+        elif param == 'GM_Triton':
+            groups['GM Triton'] = (current_idx, current_idx + 1)
+            current_idx += 1
+        
+        elif param == 'spherical_harmonics':
+            groups['Spherical Harmonics'] = (current_idx, current_idx + 2)
+            current_idx += 2
+    
+    return groups
+
+
+# Example usage function
+def plot_correlation_with_groups(correlations, est_parameters, sh_degree=None, sh_order=None):
+    """
+    Plot correlation matrix with group boundaries highlighted.
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    # Create the base correlation plot
+    fig = plot_correlation_matrix(correlations, est_parameters, sh_degree, sh_order)
+    ax = fig.axes[0]
+    
+    # Get parameter groups
+    groups = get_parameter_groups(est_parameters, correlations, sh_degree, sh_order)
+    
+    # Draw group boundaries
+    for group_name, (start, end) in groups.items():
+        # Draw rectangles around parameter groups
+        rect = plt.Rectangle((start - 0.5, start - 0.5), 
+                            end - start, end - start,
+                            fill=False, edgecolor='black', 
+                            linewidth=2.5, linestyle='--')
+        ax.add_patch(rect)
+    
+    return fig
+
+
+
+# ##############################################################################################
+# # Parameter plots
+# ##############################################################################################
+
+
+def plot_parameter_updates(parameter_updates, est_parameters, sh_degree=None, sh_order=None,
+                          title="Parameter Updates from Initial to Best Iteration", figsize=(12, 8)):
+    """
+    Plot parameter updates with proper labels and units based on estimation parameters.
+    
+    Parameters:
+    -----------
+    parameter_updates : array
+        Parameter differences (initial - best_iteration)
+    est_parameters : list
+        List of estimated parameters. Can include:
+        - 'initial_state'
+        - 'iau_rotation_model_pole'
+        - 'iau_rotation_model_pole_rate'
+        - 'gm_neptune'
+        - 'gm_triton'
+        - 'spherical_harmonics'
+    sh_degree : int, optional
+        Maximum degree for spherical harmonics (if included)
+    sh_order : int, optional
+        Maximum order for spherical harmonics (if included)
+    title : str
+        Plot title
+    figsize : tuple
+        Figure size (width, height)
+    
+    Returns:
+    --------
+    fig : matplotlib figure
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    # Generate parameter labels and units
+    labels = []
+    units = []
+    groups = []  # For coloring by parameter type
+    
+    for param in est_parameters:
+        if param == 'initial_state':
+            labels.extend(['x', 'y', 'z', 'vx', 'vy', 'vz'])
+            units.extend(['m', 'm', 'm', 'm/s', 'm/s', 'm/s'])
+            groups.extend(['position'] * 3 + ['velocity'] * 3)
+        
+        elif param == 'iau_rotation_model_pole':
+            labels.extend(['α₀', 'δ₀'])
+            units.extend(['rad', 'rad'])
+            groups.extend(['pole_position'] * 2)
+        
+        elif param == 'iau_rotation_model_pole_rate':
+            labels.extend(['α̇₀', 'δ̇₀'])
+            units.extend(['rad/s', 'rad/s'])
+            groups.extend(['pole_rate'] * 2)
+        
+        elif param == 'GM_Neptune':
+            labels.append('GM_Nep')
+            units.append('km³/s²')
+            groups.append('gravity')
+        
+        elif param == 'GM_Triton':
+            labels.append('GM_Tri')
+            units.append('km³/s²')
+            groups.append('gravity')
+        
+        elif param == 'spherical_harmonics':
+            # Hardcoded for C20 and C40 only
+            labels.extend(['C20', 'C40'])
+            units.extend(['[-]', '[-]'])
+            groups.extend(['spherical_harmonics', 'spherical_harmonics'])
+            
+    # Verify label count
+    n = len(parameter_updates)
+    if len(labels) != n:
+        print(f"Warning: Generated {len(labels)} labels but have {n} parameters plot_parameter_updates")
+        if len(labels) < n:
+            labels.extend([f'Param_{i}' for i in range(len(labels), n)])
+            units.extend(['[-]'] * (n - len(labels)))
+            groups.extend(['other'] * (n - len(labels)))
+        else:
+            labels = labels[:n]
+            units = units[:n]
+            groups = groups[:n]
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Color mapping for different parameter groups
+    color_map = {
+        'position': '#1f77b4',      # Blue
+        'velocity': '#ff7f0e',      # Orange
+        'pole_position': '#2ca02c', # Green
+        'pole_rate': '#d62728',     # Red
+        'gravity': '#9467bd',       # Purple
+        'spherical_harmonics': '#8c564b',  # Brown
+        'other': '#7f7f7f'          # Gray
+    }
+    
+    colors = [color_map.get(g, '#7f7f7f') for g in groups]
+    
+    # Create bar plot
+    x = np.arange(n)
+    bars = ax.bar(x, parameter_updates, color=colors, alpha=0.8, edgecolor='black', linewidth=1)
+    
+    # Set labels
+    ax.set_xlabel('Parameter', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Update Value', fontsize=12, fontweight='bold')
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+    
+    # Set x-ticks with parameter names and units
+    ax.set_xticks(x)
+    tick_labels = [f'{label}\n[{unit}]' for label, unit in zip(labels, units)]
+    ax.set_xticklabels(tick_labels, rotation=45, ha='right', fontsize=9)
+    
+    # Add horizontal line at zero
+    ax.axhline(0, color='black', linestyle='--', alpha=0.5, linewidth=1.5)
+    
+    # Add grid
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    
+    # Add value labels on top of bars
+    for i, (bar, val) in enumerate(zip(bars, parameter_updates)):
+        height = bar.get_height()
+        # Use scientific notation for very small values
+        if abs(val) < 0.001 and val != 0:
+            label_text = f'{val:.2e}'
+        else:
+            label_text = f'{val:.3f}'
+        
+        # Position text above or below bar depending on sign
+        y_pos = height + 0.02 * (ax.get_ylim()[1] - ax.get_ylim()[0]) if height >= 0 else height - 0.02 * (ax.get_ylim()[1] - ax.get_ylim()[0])
+        va = 'bottom' if height >= 0 else 'top'
+        
+        ax.text(i, y_pos, label_text, ha='center', va=va, fontsize=7, rotation=0)
+    
+    # Create legend for parameter groups
+    from matplotlib.patches import Patch
+    unique_groups = []
+    legend_elements = []
+    for group in groups:
+        if group not in unique_groups:
+            unique_groups.append(group)
+            group_name = group.replace('_', ' ').title()
+            legend_elements.append(Patch(facecolor=color_map.get(group, '#7f7f7f'), 
+                                        edgecolor='black', label=group_name))
+    
+    ax.legend(handles=legend_elements, loc='best', fontsize=10)
+    
+    plt.tight_layout()
+    
+    return fig
+
+
+def plot_parameter_history(parameter_history, est_parameters, best_iteration=None,
+                           sh_degree=None, sh_order=None, 
+                           title="Parameter Convergence History", figsize=(14, 10)):
+    """
+    Plot the evolution of all parameters through iterations.
+    
+    Parameters:
+    -----------
+    parameter_history : array
+        Array with shape (n_params, n_iterations) containing parameter values at each iteration
+    est_parameters : list
+        List of estimated parameters
+    best_iteration : int, optional
+        Index of best iteration to highlight
+    sh_degree, sh_order : int, optional
+        Spherical harmonics degree and order
+    title : str
+        Plot title
+    figsize : tuple
+        Figure size
+    
+    Returns:
+    --------
+    fig : matplotlib figure
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    # Generate parameter labels
+    labels = []
+    groups = []
+    
+    for param in est_parameters:
+        if param == 'initial_state':
+            labels.extend(['x [km]', 'y [km]', 'z [km]', 'vx [km/s]', 'vy [km/s]', 'vz [km/s]'])
+            groups.extend(['State'] * 6)
+        elif param == 'iau_rotation_model_pole':
+            labels.extend(['α₀ [rad]', 'δ₀ [rad]'])
+            groups.extend(['Pole'] * 2)
+        elif param == 'iau_rotation_model_pole_rate':
+            labels.extend(['α̇₀ [rad/s]', 'δ̇₀ [rad/s]'])
+            groups.extend(['Pole Rate'] * 2)
+        elif param == 'GM_Neptune':
+            labels.append('GM_Nep [km³/s²]')
+            groups.append('Gravity')
+        elif param == 'GM_Triton':
+            labels.append('GM_Tri [km³/s²]')
+            groups.append('Gravity')
+        elif param == 'spherical_harmonics':
+            # Hardcoded for C20 and C40 only
+            labels.extend(['C20', 'C40'])
+            groups.extend(['spherical_harmonics', 'spherical_harmonics'])
+          
+    
+    n_params = parameter_history.shape[0]
+    n_iterations = parameter_history.shape[1]
+    iterations = np.arange(n_iterations)
+    
+    # Create subplots - one per parameter
+    n_cols = 3
+    n_rows = int(np.ceil(n_params / n_cols))
+    
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, sharex=True)
+    axes = axes.flatten() if n_params > 1 else [axes]
+    
+    for i in range(n_params):
+        ax = axes[i]
+        ax.plot(iterations, parameter_history[i, :], marker='o', linewidth=1.5, markersize=4)
+        
+        # Highlight best iteration
+        if best_iteration is not None:
+            ax.axvline(best_iteration, color='red', linestyle='--', alpha=0.7, linewidth=2, label='Best Iteration')
+            ax.plot(best_iteration, parameter_history[i, best_iteration], 'r*', markersize=15, label='Best Value')
+        
+        ax.set_ylabel(labels[i] if i < len(labels) else f'Param {i}', fontsize=9)
+        ax.grid(True, alpha=0.3)
+        ax.set_title(f'{groups[i] if i < len(groups) else "Parameter"}', fontsize=10, fontweight='bold')
+        
+        if best_iteration is not None and i == 0:
+            ax.legend(fontsize=8)
+    
+    # Remove empty subplots
+    for i in range(n_params, len(axes)):
+        fig.delaxes(axes[i])
+    
+    # Set x-labels for bottom row
+    for ax in axes[n_params - n_cols:n_params]:
+        ax.set_xlabel('Iteration', fontsize=10)
+    
+    fig.suptitle(title, fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    
+    return fig
+
+
+# ##############################################################################################
+# # TWO RMS Plots
+# ##############################################################################################
+
+
+def plot_rms_comparison(rms_SPICE, rms_Norm=None, title="RMS Comparison Across Estimation Scenarios", 
+                        figsize=(14, 6)):
+    """
+    Plot RMS values for SPICE and Norm as line plots with markers.
+    
+    Parameters:
+    -----------
+    rms_SPICE : dict
+        Dictionary with estimation scenarios as keys and RMS values
+    rms_Norm : dict
+        Dictionary with estimation scenarios as keys and RMS values
+    title : str
+        Plot title
+    figsize : tuple
+        Figure size (width, height)
+    
+    Returns:
+    --------
+    fig : matplotlib figure
+    """
+    # import matplotlib.pyplot as plt
+    # import numpy as np
+    
+    # Get keys (should be the same for both dicts)
+    keys = list(rms_SPICE.keys())
+    
+    # Extract values
+    spice_values = [rms_SPICE[k] for k in keys]
+    if rms_Norm != None:
+        norm_values = [rms_Norm[k] for k in keys]
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    x = np.arange(len(keys))
+    
+    # Plot lines with markers
+    ax.plot(x, spice_values, marker='o', linewidth=2, markersize=8, 
+            label='RMS SPICE', color='steelblue', alpha=0.8)
+    if rms_Norm != None:
+        ax.plot(x, norm_values, marker='s', linewidth=2, markersize=8, 
+                label='RMS Norm', color='coral', alpha=0.8)
+        
+    # Labels and formatting
+    ax.set_ylabel('RMS', fontsize=12, fontweight='bold')
+    ax.set_xlabel('Estimation Scenario', fontsize=12, fontweight='bold')
+    ax.set_title(title, fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(keys, rotation=45, ha='right', fontsize=9)
+    ax.legend(fontsize=11, loc='best')
+    ax.grid(True, alpha=0.3, linestyle='--')
+    
+    # # Add value labels at each point
+    if rms_Norm != None:
+        for i, (s_val, n_val) in enumerate(zip(spice_values, norm_values)):
+            # SPICE label
+            label_s = f'{s_val:.2e}' if s_val < 0.01 else f'{s_val:.3f}'
+            ax.text(i, s_val, label_s, ha='center', va='bottom', 
+                fontsize=7, fontweight='bold', color='steelblue')
+            
+            # Norm label
+            label_n = f'{n_val:.2e}' if n_val < 0.01 else f'{n_val:.3f}'
+            ax.text(i, n_val, label_n, ha='center', va='top', 
+                fontsize=7, fontweight='bold', color='coral')
+        
+    else:
+        for i, s_val in enumerate(spice_values):
+            # SPICE label
+            label_s = f'{s_val:.2e}' if s_val < 0.01 else f'{s_val:.3f}'
+            ax.text(i, s_val, label_s, ha='center', va='bottom', 
+                fontsize=7, fontweight='bold', color='steelblue')
+            
+        
+
+    plt.tight_layout()
+    
+    return fig
+
