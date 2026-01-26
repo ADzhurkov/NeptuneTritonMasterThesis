@@ -110,6 +110,51 @@ def Create_Env(settings_dict):
         body_settings.get( "Neptune" ).rotation_model_settings = environment_setup.rotation_model.iau_rotation_model(
                 original_frame, target_frame, nominal_meridian,nominal_pole,rotation_rate,pole_precession,merdian_periodic_terms,pole_periodic_terms,angle_base_frame="J2000")
 
+    elif settings_dict['Neptune_rot_model_type'] == 'Pole_Model_Jacobson2009':
+        alpha_r = np.deg2rad(299.4608612607558) #as defined by Jacbson 2009 (check paper for uncertanties)
+        delta_r = np.deg2rad(43.4048107907141) #as defined by Jacbson 2009 (check paper for uncertanties)
+        epsilon = np.deg2rad(0.4616274249865)
+        omega_0 = np.deg2rad(352.1753923868973) # 1989 August 25 needs to be adjusted to J2000
+        omega_dot = np.deg2rad(52.3836218446110/36525/24/3600) # rad/sec
+        w_dot = np.deg2rad(536.3128492) # rad/day  Not estimated, from Warwick et al. (1989).
+
+
+        t0 = np.datetime64('1989-08-25T00:00:00')
+        t1 = np.datetime64('2000-01-01T12:00:00')
+
+        seconds_to_J2000 = (t1 - t0) / np.timedelta64(1, 's')
+        omega_0 = omega_0 + omega_dot*seconds_to_J2000 #adjusted for J2000 !!
+ 
+        alpha_0 = alpha_r
+        alpha_1 = epsilon*(1/np.cos(delta_r))
+        alpha_2 = -1/2*epsilon**2*np.tan(delta_r)/np.cos(delta_r)
+
+        delta_0 = delta_r - 1/4*epsilon**2*np.tan(delta_r)
+        delta_1 = -epsilon
+        delta_2 = 1/4*epsilon**2*np.tan(delta_r)
+
+        alpha_delta_1 = np.array([alpha_1, delta_1])
+        alpha_delta_2 = np.array([alpha_2,delta_2])
+
+        #Order in a way Tudat accepts
+        #-----------------------------------------------------------------------------
+        nominal_meridian = np.deg2rad(249.978) # W_0 from IAU (not relevant for this study)
+        nominal_pole = np.array([alpha_0,delta_0]) #alpha_0 and delta_0
+        rotation_rate=np.deg2rad(541.1397757/24/3600) # W_0_dot from IAU (not relevant for this study)
+        pole_precession= np.array([0,0]) # alpha_0_dot and delta_0_dot are 0
+        merdian_periodic_terms = {np.deg2rad(52.316/36525/24/3600): (np.deg2rad(-0.48), np.deg2rad(357.85))} #w_N_i, W_i, Phi_N_i in that order from IAU (not relevant)
+
+
+        data = {omega_dot: (alpha_delta_1, omega_0),2*omega_dot:(alpha_delta_2,2*omega_0)}
+        pole_periodic_terms = data
+
+
+
+        #Assuming Jacboson 2009 is in J2000 frame and not ECLIPJ2000
+        body_settings.get( "Neptune" ).rotation_model_settings = environment_setup.rotation_model.iau_rotation_model(
+                original_frame, target_frame, nominal_meridian,nominal_pole,rotation_rate,pole_precession,merdian_periodic_terms,pole_periodic_terms,angle_base_frame="J2000")
+
+
 #---------------------------------------------------------------------------------------------------------------------------------------------------
 
     body_settings.get("Neptune").ephemeris_settings = environment_setup.ephemeris.direct_spice(
@@ -356,7 +401,7 @@ def make_relative_position_pseudo_observations(start_epoch,end_epoch, system_of_
     return simulated_pseudo_observations, relative_position_observation_settings
 
 
-def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings,pseudo_observations_settings,pseudo_observations):
+def Create_Estimation_Output(settings,system_of_bodies,propagator_settings,pseudo_observations_settings,pseudo_observations):
 
     #pseudo_observations_settings = settings_dict['pseudo_observations_settings']
     #pseudo_observations = settings_dict['pseudo_observations']
@@ -364,20 +409,31 @@ def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings,
     parameters_to_estimate_settings = parameters_setup.initial_states(propagator_settings, system_of_bodies)
     
     #Only use with simple rotational model!
-    if "Rotation_Pole_Position_Neptune" in settings_dict["est_parameters"]:
+    if "Rotation_Pole_Position_Neptune" in settings['est']["est_parameters"]:
         parameters_to_estimate_settings.append(parameters_setup.rotation_pole_position('Neptune'))
     
     #Only use with IAU rotational model
-    if 'iau_rotation_model_pole' in settings_dict["est_parameters"]:
+    if 'iau_rotation_model_pole' in settings['est']["est_parameters"]:
         parameters_to_estimate_settings.append(parameters_setup.iau_rotation_model_pole('Neptune'))
-    if 'iau_rotation_model_pole_rate' in settings_dict['est_parameters']:
+    if 'iau_rotation_model_pole_rate' in settings['est']['est_parameters']:
         parameters_to_estimate_settings.append(parameters_setup.iau_rotation_model_pole_rate('Neptune'))
-    if 'GM_Neptune' in settings_dict['est_parameters']:
+    if 'iau_rotation_model_pole_librations' in settings['est']['est_parameters']:
+        if settings['env']['Neptune_rot_model_type'] == 'Pole_Model_Jacobson2009':
+            w_n_1 = np.deg2rad(52.3836218446110/36525/24/3600)
+            w_n_2 = 2*np.deg2rad(52.3836218446110/36525/24/3600)
+            if 'pole_librations_deg1' in settings['est']['est_parameters']:
+                parameters_to_estimate_settings.append(parameters_setup.iau_rotation_model_pole_librations('Neptune',[w_n_1]))
+            elif 'pole_librations_deg2' in settings['est']['est_parameters']:
+                parameters_to_estimate_settings.append(parameters_setup.iau_rotation_model_pole_librations('Neptune',[w_n_1,w_n_2]))
+        elif settings['env']['Neptune_rot_model_type'] == 'IAU2015':
+            w_n_i = np.deg2rad(52.316/36525/24/3600)
+            parameters_to_estimate_settings.append(parameters_setup.iau_rotation_model_pole_librations('Neptune',[w_n_i]))
+    if 'GM_Neptune' in settings['est']['est_parameters']:
         parameters_to_estimate_settings.append(parameters_setup.gravitational_parameter('Neptune'))
-    if 'GM_Triton' in settings_dict['est_parameters']:
+    if 'GM_Triton' in settings['est']['est_parameters']:
         parameters_to_estimate_settings.append(parameters_setup.gravitational_parameter('Triton'))
 
-    if 'spherical_harmonics' in settings_dict['est_parameters']:
+    if 'spherical_harmonics' in settings['est']['est_parameters']:
         block_indices = [
         (2, 0),  # C20 (J2)
         (4, 0)   # C40 (J4)
@@ -421,9 +477,104 @@ def Create_Estimation_Output(settings_dict,system_of_bodies,propagator_settings,
     # Perform the estimation
     print('Performing the estimation...')
     print(f'Original initial states: {original_parameter_vector}')
+    parameters_desc = parameters_to_estimate.get_parameter_descriptions()
+
 
     estimation_output = estimator.perform_estimation(estimation_input)
 
 
 
-    return estimation_output, original_parameter_vector
+    return estimation_output, original_parameter_vector, parameters_desc
+
+
+
+########################################################################################################################################################
+# MANUALLY SIMULATE IAU ROTATION MODEL
+########################################################################################################################################################
+def PoleModel(time_column,parameter_update=[],model_type='IAU'):
+    """
+    Simulates a standard IAU rotation model and outputs the pole position (right ascension and declination in rad).
+        
+    Parameters:
+    -----------
+    time_column : np.ndarray
+        Time in seconds from J2000 epoch, shape (N, 1) or (N,)
+    model_type : str = IAU
+        model type to select the model parameters either IAU or Jacobson2009
+    Returns:
+    --------
+    alpha_array : np.ndarray
+        right ascension in rad shape (N, 1) 
+    delta_array : np.ndarray
+        declination in rad shape (N, 1) 
+    """
+
+    alpha_array = np.array([])
+    delta_array = np.array([])
+
+    
+
+    delta_t = time_column #exactly what we need
+
+    
+    #parameter_update = [alpha_0,delta_0,alpha_dot,delta_dot,alpha_dot_1,delta_dot_1,alpha_dot_2,delta_dot_2]
+
+    #IAU 2015 values
+    if model_type == 'IAU':
+        deg = 1
+        alpha_0 = np.deg2rad(299.36) + parameter_update[0]
+        delta_0 = np.deg2rad(43.46) + parameter_update[1]
+        alpha_dot = 0 + parameter_update[2]
+        delta_dot = 0 + parameter_update[3]
+        alpha_dot_1 = np.deg2rad(0.7) + parameter_update[4]
+        delta_dot_1 = np.deg2rad(-0.51) + parameter_update[5]
+        omega_1 = np.deg2rad(52.316/36525/24/3600)
+        phi_1 =  np.deg2rad(357.85)
+
+    if model_type == 'Jacobson2009':
+        deg = 2
+        alpha_r = np.deg2rad(299.4608612607558) #as defined by Jacbson 2009 (check paper for uncertanties)
+        delta_r = np.deg2rad(43.4048107907141) #as defined by Jacbson 2009 (check paper for uncertanties)
+        epsilon = np.deg2rad(0.4616274249865)
+        omega_0 = np.deg2rad(352.1753923868973) # 1989 August 25 needs to be adjusted to J2000
+        omega_dot = np.deg2rad(52.3836218446110/36525/24/3600) # rad/sec
+        w_dot = np.deg2rad(536.3128492) # rad/day  Not estimated, from Warwick et al. (1989).
+
+
+        t0 = np.datetime64('1989-08-25T00:00:00')
+        t1 = np.datetime64('2000-01-01T12:00:00')
+
+        seconds_to_J2000 = (t1 - t0) / np.timedelta64(1, 's')
+        omega_0 = omega_0 + omega_dot*seconds_to_J2000
+
+       
+ 
+        #--------------------------------------------------------------
+        alpha_0 = alpha_r + parameter_update[0]
+        delta_0 = delta_r - 1/4*epsilon**2*np.tan(delta_r) + parameter_update[1]
+        
+        alpha_dot = 0 + parameter_update[2] + parameter_update[2]
+        delta_dot = 0 + parameter_update[3] + parameter_update[3]
+        
+        alpha_dot_1 = epsilon*(1/np.cos(delta_r)) + parameter_update[4]
+        delta_dot_1 = -epsilon + parameter_update[5]
+        
+        alpha_dot_2 = -1/2*epsilon**2*np.tan(delta_r)/np.cos(delta_r) + parameter_update[6]
+        delta_dot_2 = 1/4*epsilon**2*np.tan(delta_r) + parameter_update[7]
+
+        omega_1 = omega_dot
+        phi_1 =  omega_0
+        omega_2 = 2*omega_dot
+        phi_2 = 2*omega_0
+
+    #------------------------------------------------------------------------------------------
+    omega_t_phi = omega_1 * delta_t + phi_1
+    if deg == 1:
+        alpha_array = alpha_0 + alpha_dot*delta_t + alpha_dot_1*np.sin(omega_t_phi)
+        delta_array = delta_0 + delta_dot*delta_t + delta_dot_1*np.cos(omega_t_phi)
+    if deg == 2:
+        omega_2_t_phi = omega_2*delta_t + phi_2
+        alpha_array = alpha_0 + alpha_dot*delta_t + alpha_dot_1*np.sin(omega_t_phi) + alpha_dot_2*np.sin(omega_2_t_phi)
+        delta_array = delta_0 + delta_dot*delta_t + delta_dot_1*np.cos(omega_t_phi) + delta_dot_2*np.cos(omega_2_t_phi)
+
+    return alpha_array,delta_array

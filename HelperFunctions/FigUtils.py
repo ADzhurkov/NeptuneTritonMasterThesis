@@ -15,7 +15,7 @@ from scipy.signal import periodogram, get_window
 from tudatpy.astro.time_conversion import DateTime
 #from tudatpy.numerical_simulation import Time
 
-from datetime import datetime
+from datetime import datetime,timedelta
 from pathlib import Path
 
 
@@ -1000,7 +1000,10 @@ def plot_correlation_matrix(correlations, est_parameters, sh_degree=None, sh_ord
         
         elif param == 'iau_rotation_model_pole_rate':
             labels.extend(['α̇₀', 'δ̇₀'])
-        
+        elif param == 'iau_rotation_model_pole_librations':
+            labels.extend([[r'\alpha_{i}', r'\delta_{i}']])
+            #units.extend(['rad', 'rad'])
+
         elif param == 'GM_Neptune':
             labels.append('GM_Nep')
         
@@ -1096,7 +1099,10 @@ def get_parameter_groups(est_parameters, correlations, sh_degree=None, sh_order=
         elif param == 'iau_rotation_model_pole_rate':
             groups['Pole Rate'] = (current_idx, current_idx + 2)
             current_idx += 2
-        
+        elif param == 'iau_rotation_model_pole_librations':
+            groups['Pole Librations'] = (current_idx,current_idx+2)
+            #labels.extend([[r'\alpha_{i}', r'\delta_{i}']])
+            current_idx += 2
         elif param == 'GM_Neptune':
             groups['GM Neptune'] = (current_idx, current_idx + 1)
             current_idx += 1
@@ -1178,6 +1184,8 @@ def plot_parameter_updates(parameter_updates, est_parameters, sh_degree=None, sh
     import matplotlib.pyplot as plt
     import numpy as np
     
+    #if 'pole_ibrations_deg2' in est_parameters:
+        
     # Generate parameter labels and units
     labels = []
     units = []
@@ -1199,6 +1207,10 @@ def plot_parameter_updates(parameter_updates, est_parameters, sh_degree=None, sh
             units.extend(['rad/s', 'rad/s'])
             groups.extend(['pole_rate'] * 2)
         
+        elif param == 'iau_rotation_model_pole_librations':
+            labels.extend([[r'\alpha_{i}', r'\delta_{i}']])
+            units.extend(['rad', 'rad'])
+            groups.extend(['pole_lib'] * 2)
         elif param == 'GM_Neptune':
             labels.append('GM_Nep')
             units.append('km³/s²')
@@ -1339,6 +1351,10 @@ def plot_parameter_history(parameter_history, est_parameters, best_iteration=Non
         elif param == 'iau_rotation_model_pole_rate':
             labels.extend(['α̇₀ [rad/s]', 'δ̇₀ [rad/s]'])
             groups.extend(['Pole Rate'] * 2)
+        elif param == 'iau_rotation_model_pole_librations':
+            labels.extend([[r'\alpha_{i}', r'\delta_{i}']])
+            #units.extend(['rad', 'rad'])
+            groups.extend(['Pole Lib'] * 2)
         elif param == 'GM_Neptune':
             labels.append('GM_Nep [km³/s²]')
             groups.append('Gravity')
@@ -1475,3 +1491,382 @@ def plot_rms_comparison(rms_SPICE, rms_Norm=None, title="RMS Comparison Across E
     
     return fig
 
+        # print("Next")
+
+# #---------------------------------------------------------------------------------------
+# PARAMETER PLOTS (Y axis) VS ESTIMATION NAME (X axis)
+# #---------------------------------------------------------------------------------------
+
+
+def plot_state_magnitude_updates(best_parameter_update, 
+                                 title="Position and Velocity Magnitude Updates",
+                                 figsize=(14, 6)):
+    """
+    Plot magnitude of position and velocity updates (first 6 parameters).
+    
+    Parameters:
+    -----------
+    best_parameter_update : dict
+        Dictionary with keys as scenario names and values as parameter update arrays.
+        First 6 elements are assumed to be [x, y, z, vx, vy, vz] in meters and m/s.
+    title : str
+        Plot title
+    figsize : tuple
+        Figure size (width, height)
+    
+    Returns:
+    --------
+    fig : matplotlib figure
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    keys = list(best_parameter_update.keys())
+    
+    # Extract position and velocity updates and convert to km and km/s
+    delta_r_magnitudes = []
+    delta_v_magnitudes = []
+    
+    for key in keys:
+        updates = best_parameter_update[key]
+        
+        # Position: x, y, z (convert from m to km)
+        x, y, z = updates[0] / 1000, updates[1] / 1000, updates[2] / 1000
+        delta_r = np.sqrt(x**2 + y**2 + z**2)
+        delta_r_magnitudes.append(delta_r)
+        
+        # Velocity: vx, vy, vz (convert from m/s to km/s)
+        vx, vy, vz = updates[3] / 1000, updates[4] / 1000, updates[5] / 1000
+        delta_v = np.sqrt(vx**2 + vy**2 + vz**2)
+        delta_v_magnitudes.append(delta_v)
+    
+    # Create figure with 2 subplots
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
+    
+    x = np.arange(len(keys))
+    
+    # Plot 1: Delta R magnitude
+    axes[0].plot(x, delta_r_magnitudes, marker='o', linewidth=2, markersize=8, 
+                color='steelblue', alpha=0.8)
+    axes[0].set_ylabel('|Δr| [km]', fontsize=12, fontweight='bold')
+    axes[0].set_xlabel('Estimation Scenario', fontsize=12, fontweight='bold')
+    axes[0].set_title('Position Magnitude Update', fontsize=13, fontweight='bold')
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels(keys, rotation=45, ha='right', fontsize=9)
+    axes[0].grid(True, alpha=0.3, linestyle='--')
+    
+    # Add value labels
+    for i, v in enumerate(delta_r_magnitudes):
+        label = f'{v:.3f}'
+        axes[0].text(i, v, label, ha='center', va='bottom', 
+                    fontsize=8, fontweight='bold')
+    
+    # Plot 2: Delta V magnitude
+    axes[1].plot(x, delta_v_magnitudes, marker='s', linewidth=2, markersize=8, 
+                color='coral', alpha=0.8)
+    axes[1].set_ylabel('|Δv| [km/s]', fontsize=12, fontweight='bold')
+    axes[1].set_xlabel('Estimation Scenario', fontsize=12, fontweight='bold')
+    axes[1].set_title('Velocity Magnitude Update', fontsize=13, fontweight='bold')
+    axes[1].set_xticks(x)
+    axes[1].set_xticklabels(keys, rotation=45, ha='right', fontsize=9)
+    axes[1].grid(True, alpha=0.3, linestyle='--')
+    
+    # Add value labels
+    for i, v in enumerate(delta_v_magnitudes):
+        label = f'{v:.6f}'
+        axes[1].text(i, v, label, ha='center', va='bottom', 
+                    fontsize=8, fontweight='bold')
+    
+    fig.suptitle(title, fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    
+    return fig
+
+
+def plot_state_component_updates(best_parameter_update,
+                                  title="Individual State Component Updates",
+                                  figsize=(14, 12)):
+    """
+    Plot individual components of position and velocity updates (6 subplots).
+    
+    Parameters:
+    -----------
+    best_parameter_update : dict
+        Dictionary with keys as scenario names and values as parameter update arrays.
+        First 6 elements are assumed to be [x, y, z, vx, vy, vz] in meters and m/s.
+    title : str
+        Plot title
+    figsize : tuple
+        Figure size (width, height)
+    
+    Returns:
+    --------
+    fig : matplotlib figure
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    keys = list(best_parameter_update.keys())
+    
+    # Extract all components and convert to km and km/s
+    x_vals = [best_parameter_update[k][0] / 1000 for k in keys]  # m -> km
+    y_vals = [best_parameter_update[k][1] / 1000 for k in keys]  # m -> km
+    z_vals = [best_parameter_update[k][2] / 1000 for k in keys]  # m -> km
+    vx_vals = [best_parameter_update[k][3] / 1000 for k in keys]  # m/s -> km/s
+    vy_vals = [best_parameter_update[k][4] / 1000 for k in keys]  # m/s -> km/s
+    vz_vals = [best_parameter_update[k][5] / 1000 for k in keys]  # m/s -> km/s
+    
+    # Create figure with 3x2 subplots
+    fig, axes = plt.subplots(3, 2, figsize=figsize, sharex=True)
+    
+    x = np.arange(len(keys))
+    
+    # Component data and labels
+    components = [
+        (x_vals, 'Δx [km]', 'X Position Update'),
+        (y_vals, 'Δy [km]', 'Y Position Update'),
+        (z_vals, 'Δz [km]', 'Z Position Update'),
+        (vx_vals, 'Δvx [km/s]', 'X Velocity Update'),
+        (vy_vals, 'Δvy [km/s]', 'Y Velocity Update'),
+        (vz_vals, 'Δvz [km/s]', 'Z Velocity Update')
+    ]
+    
+    colors = ['steelblue', 'steelblue', 'steelblue', 'coral', 'coral', 'coral']
+    markers = ['o', 's', '^', 'o', 's', '^']
+    
+    # Plot each component
+    for idx, (ax, (vals, ylabel, subplot_title), color, marker) in enumerate(zip(axes.flat, components, colors, markers)):
+        ax.plot(x, vals, marker=marker, linewidth=2, markersize=8, 
+               color=color, alpha=0.8)
+        ax.set_ylabel(ylabel, fontsize=11, fontweight='bold')
+        ax.set_title(subplot_title, fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.axhline(0, color='black', linestyle='--', alpha=0.5, linewidth=1)
+        
+        # Add value labels
+        for i, v in enumerate(vals):
+            # Use appropriate precision based on magnitude
+            if idx < 3:  # Position components (km)
+                label = f'{v:.3f}'
+            else:  # Velocity components (km/s)
+                label = f'{v:.6f}'
+            
+            va = 'bottom' if v >= 0 else 'top'
+            ax.text(i, v, label, ha='center', va=va, 
+                   fontsize=7, fontweight='bold')
+    
+    # Set x-labels only on bottom row
+    for ax in axes[2, :]:
+        ax.set_xlabel('Estimation Scenario', fontsize=11, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(keys, rotation=45, ha='right', fontsize=9)
+    
+    fig.suptitle(title, fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    
+    return fig
+
+
+def plot_state_updates_combined(best_parameter_update):
+    """
+    Create both plots: magnitude updates and component updates.
+    
+    Parameters:
+    -----------
+    best_parameter_update : dict
+        Dictionary with keys as scenario names and values as parameter update arrays
+    
+    Returns:
+    --------
+    tuple : (fig_magnitude, fig_components)
+    """
+    fig1 = plot_state_magnitude_updates(best_parameter_update)
+    fig2 = plot_state_component_updates(best_parameter_update)
+    
+    return fig1, fig2
+
+#A parameter (y axis) vs simulation name (x axis)
+def plot_parameter_update(best_parameter_update,simulations,parameter_to_plot,libration_deg='deg1', 
+                                 title="Position and Velocity Magnitude Updates",
+                                 figsize=(14, 6)):
+    """
+    Plot any parameter.
+    
+    Parameters:
+    -----------
+    best_parameter_update : dict
+        Dictionary with keys as scenario names and values as parameter update arrays.
+        First 6 elements are assumed to be [x, y, z, vx, vy, vz] in meters and m/s.
+    title : str
+        Plot title
+    figsize : tuple
+        Figure size (width, height)
+    
+    Returns:
+    --------
+    fig : matplotlib figure
+    """
+
+    keys = list(best_parameter_update.keys())
+    
+    param_names = ['initial_state','GM_Neptune','GM_Triton',
+                   'iau_rotation_model_pole','iau_rotation_model_pole_rate','iau_rotation_model_pole_librations'
+                   'spherical_harmonics']
+    param_lengths = [6, 1, 1, 2, 2, 2, 2]
+    
+    plot_param_1 = []
+    plot_name_1 = []
+    plot_param_2 = []
+    plot_name_2 = []
+    for key in keys:
+        #pole_pos_and_libration_amplitude_Pole_Jacobson2009
+        updates = best_parameter_update[key]
+        est_parameters = simulations[key]['est_parameters']
+        parameters_indicies = est_parameters_indicies[key]
+        if parameter_to_plot in est_parameters:        
+                if parameter_to_plot == 'iau_rotation_model_pole':
+                    index_in_updates = parameters_indicies.index('pole_position')
+                if parameter_to_plot == 'iau_rotation_model_pole_rate':
+                    index_in_updates = parameters_indicies.index('pole_rate')
+                if parameter_to_plot == 'iau_rotation_model_pole_librations':
+                    if libration_deg == 'deg1':
+                        index_in_updates = parameters_indicies.index('pole_lib')
+                    elif libration_deg == 'deg2' and 'pole_librations_deg2' in est_parameters:
+                        index_in_updates = parameters_indicies.index('pole_lib_deg2')
+                    else:
+                        continue #does not append indicies for edge case where iau_rotation_model_pole_librations exists but pole_librations_deg2 does not
+                plot_param_1.append(updates[index_in_updates])
+                plot_name_1.append(key)
+                plot_param_2.append(updates[index_in_updates+1])
+                plot_name_2.append(key)
+
+        # #Edge case GM Plots
+        # if parameter_to_plot == 'GM':
+        #     if 'GM_Neptune' in est_parameters:
+        #         plot_param_1.append(updates[6])
+        #         plot_name_1.append(key)
+        #     if 'GM_Triton' in est_parameters:
+        #         idx = est_parameters.index('GM_Triton')
+        #         plot_param_2.append(updates[5+idx])
+        #         plot_name_2.append(key)
+        
+
+    if parameter_to_plot == 'iau_rotation_model_pole':
+        labels = [r'$\alpha_0$ [rad]', r'$\delta_0$ [rad]']
+    elif parameter_to_plot == 'iau_rotation_model_pole_rate':
+        labels = [r'$\dot{\alpha}_0$ [rad/s]', r'$\dot{\delta}_0$ [rad/s]']
+    elif parameter_to_plot == 'iau_rotation_model_pole_librations':
+        if libration_deg == 'deg1':
+            labels = [r'$\alpha_1$ [rad]', r'$\delta_1$ [rad]']
+        elif libration_deg == 'deg2':
+            labels = [r'$\alpha_2$ [rad]', r'$\delta_2$ [rad]']
+    elif parameter_to_plot == 'GM':
+        labels = [r'$GM_{\text{Nep}}$ [m$^3$/s$^2$]',r'$GM_{\text{Tri}}$ [m$^3$/s$^2$]']
+    elif parameter_to_plot == 'GM_Triton':
+        labels = [r'$GM_{\text{Tri}}$ [m$^3$/s$^2$]']
+    elif parameter_to_plot == 'spherical_harmonics':
+        labels = ['$C_{20}$', '$C_{40}$']
+
+
+
+    # Create figure with 2 subplots
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
+    
+    x = np.arange(len(keys))
+    
+    # Plot 1: Delta Param 1
+    axes[0].plot(plot_name_1, plot_param_1, marker='o', linewidth=2, markersize=8, 
+                color='steelblue', alpha=0.8)
+    axes[0].set_ylabel(labels[0], fontsize=12, fontweight='bold')
+    axes[0].set_xlabel('Estimation Scenario', fontsize=12, fontweight='bold')
+    #axes[0].set_title('Position Magnitude Update', fontsize=13, fontweight='bold')
+    axes[0].set_xticks(plot_name_1)
+    axes[0].set_xticklabels(plot_name_1, rotation=45, ha='right', fontsize=9)
+    axes[0].grid(True, alpha=0.3, linestyle='--')
+    
+    # Add value labels
+    # for i, v in enumerate(plot_param_1):
+    #     label = f'{v:.3f}'
+    #     axes[0].text(i, v, label, ha='center', va='bottom', 
+    #                 fontsize=8, fontweight='bold')
+    
+    # Plot 2: Delta V magnitude
+    axes[1].plot(plot_name_2, plot_param_2, marker='s', linewidth=2, markersize=8, 
+                color='coral', alpha=0.8)
+    axes[1].set_ylabel(labels[1], fontsize=12, fontweight='bold')
+    axes[1].set_xlabel('Estimation Scenario', fontsize=12, fontweight='bold')
+    #axes[1].set_title('Velocity Magnitude Update', fontsize=13, fontweight='bold')
+    axes[1].set_xticks(plot_name_2)
+    axes[1].set_xticklabels(plot_name_2, rotation=45, ha='right', fontsize=9)
+    axes[1].grid(True, alpha=0.3, linestyle='--')
+    
+    # Add value labels
+    # for i, v in enumerate(plot_param_2):
+    #     label = f'{v:.6f}'
+    #     axes[1].text(i, v, label, ha='center', va='bottom', 
+    #                 fontsize=8, fontweight='bold')
+    
+    fig.suptitle(title, fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    
+    return fig
+
+
+##########################################################################################
+# PLOT declination and right ascension plot 
+##########################################################################################
+def plot_pole_movement(time_column,alpha_array,delta_array,title='Pole Movement vs Time'):
+    """
+    Plot pole movement model (IAU 2015) for right ascension and declination.
+    
+    Parameters:
+    -----------
+    time_column : np.ndarray
+        Time in seconds from J2000 epoch, shape (N, 1) or (N,)
+    
+    Returns:
+    --------
+    fig : matplotlib.figure.Figure
+        Figure object containing the plots
+    """
+    # J2000 epoch: January 1, 2000, 12:00:00 TT
+    J2000_datetime = datetime(2000, 1, 1, 12, 0, 0)
+
+    # Convert to degrees
+    alpha_deg = np.rad2deg(alpha_array)
+    delta_deg = np.rad2deg(delta_array)
+    
+    # Convert time_column to datetime objects
+    time_seconds = time_column.flatten()
+    time_dates = [J2000_datetime + timedelta(seconds=float(t)) for t in time_seconds]
+    
+    # # Downsample if data is too dense (optional)
+    # if len(time_seconds) > 10000:
+    #     step = len(time_seconds) // 10000
+    #     time_dates = time_dates[::step]
+    #     alpha_deg = alpha_deg[::step]
+    #     delta_deg = delta_deg[::step]
+    
+    # Create the plots
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+    
+    # Plot Right Ascension
+    ax1.plot(time_dates, alpha_deg, linewidth=1.5)
+    ax1.set_ylabel('Right Ascension α (degrees)', fontsize=12)
+    ax1.grid(True, alpha=0.3)
+    #ax1.set_title('Pole Movement Model (IAU 2015)', fontsize=14, fontweight='bold')
+    
+    # Plot Declination
+    ax2.plot(time_dates, delta_deg, linewidth=1.5)
+    ax2.set_ylabel('Declination δ (degrees)', fontsize=12)
+    ax2.set_xlabel('Time (Year-Month)', fontsize=12)
+    ax2.grid(True, alpha=0.3)
+    
+    # Format x-axis to show year-month
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+    ax2.xaxis.set_major_locator(mdates.AutoDateLocator())
+    plt.setp(ax2.xaxis.get_majorticklabels(), rotation=45, ha='right')
+    
+    plt.tight_layout()
+    fig.suptitle(title, fontsize=14, fontweight='bold')
+    return fig

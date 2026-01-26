@@ -99,7 +99,7 @@ def load_npy_files(folder_path: str) -> Dict[str, np.ndarray]:
     return data
 
 def create_observations_dataframe(observations, observation_set_ids, observation_times, 
-                                 residual_history=None):
+                                 residual_history=None,best_iteration=None):
     """
     Create a DataFrame from observations with variable lengths.
     
@@ -113,8 +113,9 @@ def create_observations_dataframe(observations, observation_set_ids, observation
         Single flattened list of all observation times (one per RA/DEC pair)
     residual_history : numpy array, optional
         Shape (n_runs, n_obs, 3) where last dimension is [time, ra_residual, dec_residual]
-        If provided, adds residuals from first and last runs to DataFrame
-        
+        If provided, adds residuals from first and best runs to DataFrame
+    best_iteration : int, optional
+        The run for which the residuals were the lowest
     Returns:
     --------
     pandas.DataFrame
@@ -145,9 +146,9 @@ def create_observations_dataframe(observations, observation_set_ids, observation
                 row['residual_ra_first'] = residual_history[0, time_idx, 1]
                 row['residual_dec_first'] = residual_history[0, time_idx, 2]
                 
-                # Last run (index -1)
-                row['residual_ra_last'] = residual_history[-1, time_idx, 1]
-                row['residual_dec_last'] = residual_history[-1, time_idx, 2]
+                # Best run (at best_iteration index )
+                row['residual_ra_best'] = residual_history[best_iteration, time_idx, 1]
+                row['residual_dec_best'] = residual_history[best_iteration, time_idx, 2]
             
             data.append(row)
             time_idx += 1
@@ -309,8 +310,8 @@ def calculate_mean_std(df):
     residual_stats = df.groupby('id').agg({
     'residual_ra_first': ['mean', 'std'],
     'residual_dec_first': ['mean', 'std'],
-    'residual_ra_last': ['mean', 'std'],
-    'residual_dec_last': ['mean', 'std']
+    'residual_ra_best': ['mean', 'std'],
+    'residual_dec_best': ['mean', 'std']
     }).reset_index()
 
     # Flatten column names
@@ -450,7 +451,7 @@ def overlay_residual_stats(df, file_colors, fig=None, axes=None,
     -----------
     df : pandas.DataFrame
         DataFrame with columns: 'id', 'residual_ra_first', 'residual_dec_first',
-        'residual_ra_last', 'residual_dec_last'
+        'residual_ra_best', 'residual_dec_best'
     file_colors : dict
         Dictionary mapping file IDs to RGBA color arrays
     fig : matplotlib.figure.Figure, optional
@@ -480,8 +481,8 @@ def overlay_residual_stats(df, file_colors, fig=None, axes=None,
     residual_stats = df.groupby('id').agg({
         'residual_ra_first': ['mean', 'std'],
         'residual_dec_first': ['mean', 'std'],
-        'residual_ra_last': ['mean', 'std'],
-        'residual_dec_last': ['mean', 'std']
+        'residual_ra_best': ['mean', 'std'],
+        'residual_dec_best': ['mean', 'std']
     }).reset_index()
     
     # Flatten column names
@@ -590,7 +591,7 @@ def plot_RA_DEC_residuals_colored(df, file_colors=None, labels=["final", "initia
     df : pd.DataFrame
         DataFrame with columns: 'id', 'observatory', 'times', 
         'residual_ra_first', 'residual_dec_first', 
-        'residual_ra_last', 'residual_dec_last'
+        'residual_ra_best', 'residual_dec_best'
     file_colors : dict, optional
         Dictionary mapping file IDs (e.g., '119_nm0017') to RGBA color arrays.
         If None, uses default colors.
@@ -617,13 +618,13 @@ def plot_RA_DEC_residuals_colored(df, file_colors=None, labels=["final", "initia
         color = file_colors.get(file_id, None) if file_colors else None
 
         # --- RA plot ---
-        ax[0].scatter(group["datetime"], group["residual_ra_last"],
+        ax[0].scatter(group["datetime"], group["residual_ra_best"],
                       color=color, alpha=0.6, s=10, label=labels[0])
         #ax[0].scatter(group["datetime"], group["residual_ra_first"],
         #              color=color, alpha=0.3, s=10, marker='x', label=labels[1])
 
         # --- DEC plot ---
-        ax[1].scatter(group["datetime"], group["residual_dec_last"],
+        ax[1].scatter(group["datetime"], group["residual_dec_best"],
                       color=color, alpha=0.6, s=10)
         #ax[1].scatter(group["datetime"], group["residual_dec_first"],
         #              color=color, alpha=0.3, s=10, marker='x')
@@ -668,7 +669,7 @@ def plot_RA_DEC_residuals(
     df : pd.DataFrame
         DataFrame with columns: 'id', 'observatory', 'times',
         'residual_ra_first', 'residual_dec_first',
-        'residual_ra_last', 'residual_dec_last'
+        'residual_ra_best', 'residual_dec_best'
     df2 : pd.DataFrame or None, optional
         Optional second DataFrame with the same structure to overlay on the same axes.
     file_colors : dict, optional
@@ -696,9 +697,9 @@ def plot_RA_DEC_residuals(
 
     def _plot_one(_ax, _df, ds_label, alpha_main=0.7, alpha_init=0.35, marker_init="x"):
         # final
-        _ax[0].scatter(_df["datetime"], _df["residual_ra_last"],
+        _ax[0].scatter(_df["datetime"], _df["residual_ra_best"],
                        alpha=alpha_main, s=10, label=f"{ds_label} ({labels[0]})")
-        _ax[1].scatter(_df["datetime"], _df["residual_dec_last"],
+        _ax[1].scatter(_df["datetime"], _df["residual_dec_best"],
                        alpha=alpha_main, s=10, label=f"{ds_label} ({labels[0]})")
         # initial
         #_ax[0].scatter(_df["datetime"], _df["residual_ra_first"],
@@ -758,7 +759,7 @@ def plot_individual_RA_DEC_residuals(
     df : pd.DataFrame
         Columns: 'id','observatory','times',
                  'residual_ra_first','residual_dec_first',
-                 'residual_ra_last','residual_dec_last'
+                 'residual_ra_best','residual_dec_best'
         'times' should be seconds since J2000 (float).
     file_colors : dict, optional
         Map file_id -> color (e.g. {'119_nm0017': 'C0'})
@@ -807,7 +808,7 @@ def plot_individual_RA_DEC_residuals(
         fig, ax = plt.subplots(1, 2, figsize=(14, 5), constrained_layout=True)
 
         # === RA ===
-        ax[0].scatter(df_id['datetime'], df_id['residual_ra_last'],
+        ax[0].scatter(df_id['datetime'], df_id['residual_ra_best'],
                       color=color, alpha=0.7, s=30, label=labels[0])
         if show_initial:
             ax[0].scatter(df_id['datetime'], df_id['residual_ra_first'],
@@ -821,7 +822,7 @@ def plot_individual_RA_DEC_residuals(
         ax[0].legend(loc='best')
 
         # === DEC ===
-        ax[1].scatter(df_id['datetime'], df_id['residual_dec_last'],
+        ax[1].scatter(df_id['datetime'], df_id['residual_dec_best'],
                       color=color, alpha=0.7, s=30, label=labels[0])
         if show_initial:
             ax[1].scatter(df_id['datetime'], df_id['residual_dec_first'],
@@ -959,7 +960,7 @@ def split_into_timeframes(
     """
     
     if summary_cols is None:
-        summary_cols = ["residual_ra_last", "residual_dec_last"]
+        summary_cols = ["residual_ra_best", "residual_dec_best"]
     
     gap_seconds = gap_hours * 3600.0
     
@@ -1042,12 +1043,12 @@ def create_summary(df, time_col, summary_cols):
         lambda s: J2000_EPOCH + timedelta(seconds=s)
     )
     print("kur")
-    summary.rename(columns={'residual_ra_last_mean': 'residual_ra_mean'}, inplace=True)
-    summary.rename(columns={'residual_ra_last_std': 'residual_ra_std'}, inplace=True)
-    summary.rename(columns={'residual_ra_last_rms': 'residual_ra_rms'}, inplace=True)
-    summary.rename(columns={'residual_dec_last_mean': 'residual_dec_mean'}, inplace=True)
-    summary.rename(columns={'residual_dec_last_std': 'residual_dec_std'}, inplace=True)
-    summary.rename(columns={'residual_dec_last_rms': 'residual_dec_rms'}, inplace=True)
+    summary.rename(columns={'residual_ra_best_mean': 'residual_ra_mean'}, inplace=True)
+    summary.rename(columns={'residual_ra_best_std': 'residual_ra_std'}, inplace=True)
+    summary.rename(columns={'residual_ra_best_rms': 'residual_ra_rms'}, inplace=True)
+    summary.rename(columns={'residual_dec_best_mean': 'residual_dec_mean'}, inplace=True)
+    summary.rename(columns={'residual_dec_best_std': 'residual_dec_std'}, inplace=True)
+    summary.rename(columns={'residual_dec_best_rms': 'residual_dec_rms'}, inplace=True)
     return summary
 
 def plot_average_weight(summary_or_weights: pd.DataFrame, *, split_by_id: bool = False,
@@ -1421,7 +1422,7 @@ def plot_residuals(df, summary=None, plot_individual_frames=False):
     Parameters
     ----------
     df : pd.DataFrame
-        Must contain: id, datetime, residual_ra_last, residual_dec_last, timeframe
+        Must contain: id, datetime, residual_ra_best, residual_dec_best, timeframe
     summary : pd.DataFrame, optional
         Summary statistics with: id, timeframe, start_dt, residual_ra_std, residual_dec_std
     plot_individual_frames : bool, optional
@@ -1449,8 +1450,8 @@ def plot_residuals(df, summary=None, plot_individual_frames=False):
         colors = cm.get_cmap('Pastel1', n_frames)
         
         # Calculate overall statistics for this ID
-        overall_ra_std = data['residual_ra_last'].std()
-        overall_dec_std = data['residual_dec_last'].std()
+        overall_ra_std = data['residual_ra_best'].std()
+        overall_dec_std = data['residual_dec_best'].std()
         
         # Determine number of rows: main + summary (if provided) + per-timeframe (if enabled)
         has_summary = summary is not None and obs_id in summary['id'].values
@@ -1465,7 +1466,7 @@ def plot_residuals(df, summary=None, plot_individual_frames=False):
         ax1, ax2 = axes[0]
         
         # Plot RA residuals
-        ax1.scatter(data['datetime'], data['residual_ra_last'], s=30, alpha=0.9)
+        ax1.scatter(data['datetime'], data['residual_ra_best'], s=30, alpha=0.9)
         ax1.axhline(0, color='black', linestyle='--', alpha=0.5)
         ax1.set_xlabel('Date')
         ax1.set_ylabel('RA Residual [arcsec]')
@@ -1473,7 +1474,7 @@ def plot_residuals(df, summary=None, plot_individual_frames=False):
         ax1.grid(alpha=0.5)
         
         # Plot DEC residuals
-        ax2.scatter(data['datetime'], data['residual_dec_last'], s=30, alpha=0.9)
+        ax2.scatter(data['datetime'], data['residual_dec_best'], s=30, alpha=0.9)
         ax2.axhline(0, color='black', linestyle='--', alpha=0.5)
         ax2.set_xlabel('Date')
         ax2.set_ylabel('DEC Residual [arcsec]')
@@ -1569,7 +1570,7 @@ def plot_residuals(df, summary=None, plot_individual_frames=False):
                 duration = end - start
                 
                 # RA subplot for this timeframe
-                ax_ra.scatter(tf_data['datetime'], tf_data['residual_ra_last'], 
+                ax_ra.scatter(tf_data['datetime'], tf_data['residual_ra_best'], 
                              s=30, alpha=0.9, color=color)
                 ax_ra.axhline(0, color='black', linestyle='--', alpha=0.5)
                 ax_ra.set_xlabel('Date')
@@ -1578,7 +1579,7 @@ def plot_residuals(df, summary=None, plot_individual_frames=False):
                 ax_ra.grid(alpha=0.5)
                 
                 # DEC subplot for this timeframe
-                ax_dec.scatter(tf_data['datetime'], tf_data['residual_dec_last'], 
+                ax_dec.scatter(tf_data['datetime'], tf_data['residual_dec_best'], 
                               s=30, alpha=0.9, color=color)
                 ax_dec.axhline(0, color='black', linestyle='--', alpha=0.5)
                 ax_dec.set_xlabel('Date')
@@ -1598,6 +1599,300 @@ def plot_residuals(df, summary=None, plot_individual_frames=False):
         figs[obs_id] = fig
     
     return figs
+
+def main(file_names_loaded,simulation_path,min_sigma_arcsec = 0.01  ):
+    """
+    A function to create a 'summary' pandas dataframe with multiple types of observational weights.
+    
+    Parameters
+    ----------
+    file_names_loaded : list of str
+        A list of observation file names 
+    simulation_path : str 
+        Path of the simulation from which the weights are generated
+    min_sigma_arcsec : float (optional)
+        A minimum value for the estimated 'accuracy' of an observation in arcseconds (set to 10mas)
+    
+    Returns
+    -------
+    pd.DataFrame
+        Includes many things that need to be documented....
+
+    """
+
+    #--------------------------------------------------------------------------------------------
+    # REQUIRES A .json OR LIST WITH THE LOADED OBSERVATIONS FILES
+    #--------------------------------------------------------------------------------------------
+
+    # with open("file_names.json", "r") as f:
+    #     file_names_loaded = json.load(f)
+
+    # Extract IDs from filenames (remove 'Triton_' prefix and '.csv' suffix)
+    ordered_ids = [f.replace('Triton_', '').replace('.csv', '') for f in file_names_loaded]
+
+
+
+    #--------------------------------------------------------------------------------------------
+    # LOAD ESTIMATION RESULTS
+    #--------------------------------------------------------------------------------------------
+    #"Results/PoleEstimationRealObservations/Hybrid_Weights/initial_state_only_Jacobson2009"
+    arrays = load_npy_files(simulation_path) 
+    
+    print("Loaded numpy arrays from estimation...")
+
+    df = create_observations_dataframe(
+        arrays['observations_sorted'], 
+        ordered_ids,
+        arrays['observation_times'],
+        arrays['residual_history_arcseconds'],
+        arrays['best_iteration'])
+    
+
+    #Create timeframes 
+    df_frames, summary = split_into_timeframes(df, gap_hours=4)
+
+
+
+    #--------------------------------------------------------------------------------------------
+    # COMPUTE ID WEIGHTS
+    #--------------------------------------------------------------------------------------------
+    print("Computing ID weights...")
+
+    #Compute std in arcseconds
+    std_per_id = df.groupby("id")[["residual_ra_best", "residual_dec_best"]].std().rename(
+        columns={"residual_ra_best": "std_ra", "residual_dec_best": "std_dec"}
+    )
+
+    # Compute RMSE in arcseconds
+    rmse_per_id = (
+        df.groupby("id")[["residual_ra_best", "residual_dec_best"]]
+        .apply(lambda g: np.sqrt((g**2).mean()))
+        .rename(columns={"residual_ra_best": "rmse_ra", "residual_dec_best": "rmse_dec"})
+    )
+
+
+    # Files with 1 Id (NaN stds) have an STD assigned as 1 arcsecond
+    std_per_id = std_per_id.fillna(1)
+
+    # Convert to radians
+    arcsec_to_rad = np.pi / (180.0 * 3600.0)
+    std_per_id_rad = std_per_id * arcsec_to_rad
+    rmse_per_id_rad = rmse_per_id * arcsec_to_rad
+
+    # Compute weights = 1 / σ² std or rmse
+    weights_std = 1.0 / (std_per_id_rad ** 2)
+    weights_std.columns = ["weight_ra", "weight_dec"]
+
+    weights_rmse = 1.0 / (rmse_per_id_rad ** 2)
+    weights_rmse.columns = ["weight_ra", "weight_dec"]
+
+
+    # Don't save in this function
+    # Save to file
+    # weights_std.to_csv(out_dir / "weights_per_id_std.txt", sep="\t", float_format="%.8e")
+    # weights_rmse.to_csv(out_dir / "weights_per_id_rmse.txt", sep="\t", float_format="%.8e")
+    
+
+    #--------------------------------------------------------------------------------------------
+    # COMPUTE TIMEFRAME WEIGHTS
+    #--------------------------------------------------------------------------------------------
+    replacement_for_id = {}
+    usage_stats = {}
+
+    DEFAULT = 1  # fallback if an id has no valid stds
+
+    # Replace STD NaNs with appropriate values 
+    for id, g in summary.groupby("id"):
+        total_obs = g["n_obs"].sum()
+
+        # masks for valid stds
+        ra_mask = g["residual_ra_std"].notna()
+        dec_mask = g["residual_dec_std"].notna()
+
+        # weighted sums and totals (ignore NaNs)
+        ra_weight_sum = (g.loc[ra_mask, "residual_ra_std"] * g.loc[ra_mask, "n_obs"]).sum()
+        ra_n_used = g.loc[ra_mask, "n_obs"].sum()
+        dec_weight_sum = (g.loc[dec_mask, "residual_dec_std"] * g.loc[dec_mask, "n_obs"]).sum()
+        dec_n_used = g.loc[dec_mask, "n_obs"].sum()
+
+        # weighted means (fallback to weights DataFrame if nothing valid)
+        ra_mean = ra_weight_sum / ra_n_used if ra_n_used > 0 else std_per_id.loc[id,'std_ra']
+        dec_mean = dec_weight_sum / dec_n_used if dec_n_used > 0 else std_per_id.loc[id,'std_dec']
+
+        replacement_for_id[id] = {
+            "residual_ra_std": float(ra_mean),
+            "residual_dec_std": float(dec_mean),
+        }
+
+        usage_stats[id] = {
+            "total_obs": int(total_obs),
+            "ra_used": int(ra_n_used),
+            "ra_excluded": int(total_obs - ra_n_used),
+            "dec_used": int(dec_n_used),
+            "dec_excluded": int(total_obs - dec_n_used),
+        }
+
+    # Useful stats to check if replacement of NaNs makes sense
+    usage_df = pd.DataFrame.from_dict(usage_stats, orient='index')
+
+
+    def fill_two_cols(group):
+        rep = replacement_for_id[group.name]
+        group[["residual_ra_std","residual_dec_std"]] = (
+            group[["residual_ra_std","residual_dec_std"]].fillna(rep)
+        )
+        return group
+
+
+    summary = summary.groupby("id", group_keys=False).apply(fill_two_cols)
+
+    #--------------------------------------------------------------------------------------------
+    # Created tabulated weights
+    #--------------------------------------------------------------------------------------------
+    
+    #Add rmse and std per id to summary
+    summary = summary.merge(
+    rmse_per_id.rename(columns={'rmse_ra': 'rmse_ra_id', 'rmse_dec': 'rmse_dec_id'}),
+    on='id',
+    how='left')
+
+    summary = summary.merge(
+    std_per_id.rename(columns={'std_ra': 'std_ra_id', 'std_dec': 'std_dec_id'}),
+    on='id',
+    how='left')
+
+    # Add ID weights to summary
+    summary = summary.merge(
+    weights_rmse.rename(columns={'weight_ra': 'weight_rmse_ra_id', 'weight_dec': 'weight_rmse_dec_id'}),
+    on='id',
+    how='left')
+
+    summary = summary.merge(
+    weights_std.rename(columns={'weight_ra': 'weight_std_ra_id', 'weight_dec': 'weight_std_dec_id'}),
+    on='id',
+    how='left')
+
+    # Minimum accuracy
+    #min_sigma_arcsec = 0.005   # 5mas minimum
+
+    
+    sigma_ra = summary['residual_ra_std'].astype(float).copy()
+    sigma_dec = summary['residual_dec_std'].astype(float).copy()
+
+    rmse_ra = summary['residual_ra_rms'].astype(float).copy()
+    rmse_dec = summary['residual_dec_rms'].astype(float).copy()
+    
+    if min_sigma_arcsec > 0:
+        sigma_ra = sigma_ra.clip(lower=min_sigma_arcsec)
+        sigma_dec = sigma_dec.clip(lower=min_sigma_arcsec)
+        
+        rmse_ra = rmse_ra.clip(lower=min_sigma_arcsec)
+        rmse_dec = rmse_dec.clip(lower=min_sigma_arcsec)
+        
+
+    summary['residual_ra_std'] = sigma_ra
+    summary['residual_dec_std'] = sigma_dec
+    
+    summary['residual_ra_rms'] = rmse_ra
+    summary['residual_dec_rms'] = rmse_dec
+    
+    #average of tf and id RMSE
+    summary['residual_ra_rms_tf_id'] = (summary['residual_ra_rms'] +  summary['rmse_ra_id'])/2
+    summary['residual_dec_rms_tf_id'] = (summary['residual_dec_rms'] +  summary['rmse_dec_id'])/2
+
+
+    #--------------------------------------------------------------------------------------------
+    # Compute arcsec to rad
+
+    arcsec_to_rad = np.pi / (180.0 * 3600.0)
+
+    #STD weights
+    sigma_ra_rad  = sigma_ra * arcsec_to_rad
+    sigma_dec_rad = sigma_dec * arcsec_to_rad
+
+    summary['weight_std_ra']  = 1.0 / (sigma_ra_rad ** 2)
+    summary['weight_std_dec'] = 1.0 / (sigma_dec_rad ** 2)
+
+    #RMS weights
+    rmse_ra_rad  = summary['residual_ra_rms'] * arcsec_to_rad
+    rmse_dec_rad = summary['residual_ra_rms'] * arcsec_to_rad
+
+    summary['weight_rmse_ra']  = 1.0 / (rmse_ra_rad ** 2)
+    summary['weight_rmse_dec'] = 1.0 / (rmse_dec_rad ** 2)
+
+    #Hybrid RMS weights TF ID
+    rmse_ra_rad  = summary['residual_ra_rms_tf_id'] * arcsec_to_rad
+    rmse_dec_rad = summary['residual_dec_rms_tf_id'] * arcsec_to_rad
+
+    summary['weight_rmse_tf_id_ra']  = 1.0 / (rmse_ra_rad ** 2)
+    summary['weight_rmse_tf_id_dec'] = 1.0 / (rmse_dec_rad ** 2)
+
+
+
+    #--------------------------------------------------------------------------------------------
+    # Compute mean weight
+    
+    summary['mean_weight_std'] = summary[['weight_std_ra', 'weight_std_dec']].mean(axis=1)
+    summary['mean_weight_rmse'] = summary[['weight_rmse_ra', 'weight_rmse_dec']].mean(axis=1)
+    
+
+    # Create descale per night weights std
+    summary['weight_std_ra_scaled'] = summary['weight_std_ra'] / np.sqrt(summary['n_obs'])
+    summary['weight_std_dec_scaled'] = summary['weight_std_dec'] / np.sqrt(summary['n_obs'])
+
+    summary['mean_weight_std_scaled'] = summary[['weight_std_ra_scaled', 'weight_std_dec_scaled']].mean(axis=1)
+
+    # Create descale per night weights rmse
+    summary['weight_rmse_ra_scaled'] = summary['weight_rmse_ra'] / np.sqrt(summary['n_obs'])
+    summary['weight_rmse_dec_scaled'] = summary['weight_rmse_dec'] / np.sqrt(summary['n_obs'])
+
+    summary['mean_weight_rmse_scaled'] = summary[['weight_rmse_ra_scaled', 'weight_rmse_dec_scaled']].mean(axis=1)
+
+
+    # Create descaled per night weights rmse ID 
+    summary['weight_rmse_ra_id_scaled'] = summary['weight_rmse_ra_id'] / np.sqrt(summary['n_obs'])
+    summary['weight_rmse_dec_id_scaled'] = summary['weight_rmse_dec_id'] / np.sqrt(summary['n_obs'])
+
+    summary['mean_weight_rmse_id_scaled'] = summary[['weight_rmse_ra_id_scaled', 'weight_rmse_dec_id_scaled']].mean(axis=1)
+
+    # Create descaled per night weights std ID 
+    summary['weight_std_ra_id_scaled'] = summary['weight_std_ra_id'] / np.sqrt(summary['n_obs'])
+    summary['weight_std_dec_id_scaled'] = summary['weight_std_dec_id'] / np.sqrt(summary['n_obs'])
+
+    summary['mean_weight_std_id_scaled'] = summary[['weight_std_ra_id_scaled', 'weight_std_dec_id_scaled']].mean(axis=1)
+
+
+
+    # Create descaled per night weights rmse Hybrid ID TF 
+    summary['weight_rmse_ra_tf_id_scaled'] = summary['weight_rmse_tf_id_ra'] / np.sqrt(summary['n_obs'])
+    summary['weight_rmse_dec_tf_id_scaled'] = summary['weight_rmse_tf_id_dec'] / np.sqrt(summary['n_obs'])
+
+    summary['mean_weight_rmse_tf_id_scaled'] = summary[['weight_rmse_ra_tf_id_scaled', 'weight_rmse_dec_tf_id_scaled']].mean(axis=1)
+
+
+
+
+    # Compute difference between std and rmse metric
+    summary["ra_diff_id"] = summary["rmse_ra_id"] - summary["std_ra_id"]
+    summary["dec_diff_id"] = summary["rmse_dec_id"] - summary["std_dec_id"]
+
+
+
+
+
+    # Compute differences for timeframes
+    summary["ra_diff"] = summary["residual_ra_rms"] - summary["residual_ra_std"]
+    summary["dec_diff"] = summary["residual_dec_rms"] - summary["residual_dec_std"]
+
+    return summary
+    #Dont save in this function
+    # summary.to_csv(out_dir / "summary.txt", sep="\t", float_format="%.8e")
+
+
+
+
+
+
 
 if __name__ == "__main__":
     #############################################################################################
@@ -1634,10 +1929,10 @@ if __name__ == "__main__":
     ##############################################################################################
 
     # Define temporal scope of the simulation - equal to the time JUICE will spend in orbit around Jupiter
-    simulation_start_epoch = DateTime(1960, 1,  1).epoch()
+    simulation_start_epoch = DateTime(1963, 1,  1).epoch()
     simulation_end_epoch   = DateTime(2025, 1, 1).epoch()
     global_frame_origin = 'SSB'
-    global_frame_orientation = 'J2000'
+    global_frame_orientation = 'ECLIPJ2000'
 
     #--------------------------------------------------------------------------------------------
     # ENVIORONMENT SETTINGS 
@@ -1650,7 +1945,7 @@ if __name__ == "__main__":
     settings_env["global_frame_orientation"] = global_frame_orientation
     settings_env["interpolator_triton_cadance"] = 60*8
     settings_env["neptune_extended_gravity"] = "Jacobson2009"
-    settings_env['Neptune_rot_model_type'] = 'spice' 
+    settings_env['Neptune_rot_model_type'] = 'IAU2015' 
 
     body_settings,system_of_bodies = PropFuncs.Create_Env(settings_env)
 
@@ -1665,67 +1960,64 @@ if __name__ == "__main__":
 
 
     data = []
-    observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/AllModernJ2000/",system_of_bodies,file_names_loaded)
+    observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/AllModernECLIPJ2000",system_of_bodies,file_names_loaded)
 
     print("Loaded tudat observations...")
-    #--------------------------------------------------------------------------------------------
-    # LOAD ESTIMATION RESULTS
-    #--------------------------------------------------------------------------------------------
-    arrays = load_npy_files("Results/AllModernJ2000Frame/First") 
     
-    print("Loaded numpy arrays from estimation...")
-    nr_observations = []
-    for list1 in arrays['residuals_sorted']:
-        nr_observations.append(len(list1)/2)
-    nr_observations_check = []
+    #--------------------------------------------------------------------------------------------
+    # THIS FUNCTION GENERATES THE DATAFRAME WITH WEIGHTS
+    #--------------------------------------------------------------------------------------------
 
-    for list1 in observations.get_observations():
-        nr_observations_check.append(len(list1)/2) 
+    summary = main()
 
-    df = create_observations_dataframe(
-        arrays['observations_sorted'], 
-        ordered_ids,
-        arrays['observation_times'],
-        arrays['residual_history_arcseconds'])
+
+    #--------------------------------------------------------------------------------------------
+    # ALL PLOTTING MOVED HERE AND PROBABLY NOT WORKING
+    #--------------------------------------------------------------------------------------------
     
+    # nr_observations = []
+    # for list1 in arrays['residuals_sorted']:
+    #     nr_observations.append(len(list1)/2)
+    # nr_observations_check = []
+
+    # for list1 in observations.get_observations():
+    #     nr_observations_check.append(len(list1)/2) 
+
+
+
     #Load results without outliers
-    arrays2 = load_npy_files("Results/AllModernObservations/TimeFrameWeights_50mas_min")
+    # arrays2 = load_npy_files("Results/AllModernObservations/TimeFrameWeights_50mas_min")
     
-    print("Loaded previous numpy arrays from estimation...")
-    nr_observations = []
-    for list1 in arrays2['residuals_sorted']:
-        nr_observations.append(len(list1)/2)
-    nr_observations_check = []
+    # print("Loaded previous numpy arrays from estimation...")
+    # nr_observations = []
+    # for list1 in arrays2['residuals_sorted']:
+    #     nr_observations.append(len(list1)/2)
+    # nr_observations_check = []
 
-    for list1 in observations.get_observations():
-        nr_observations_check.append(len(list1)/2) 
+    # for list1 in observations.get_observations():
+    #     nr_observations_check.append(len(list1)/2) 
 
-    df_initial = create_observations_dataframe(
-        arrays2['observations_sorted'], 
-        ordered_ids,
-        arrays2['observation_times'],
-        arrays2['residual_history_arcseconds'])
+    # df_initial = create_observations_dataframe(
+    #     arrays2['observations_sorted'], 
+    #     ordered_ids,
+    #     arrays2['observation_times'],
+    #     arrays2['residual_history_arcseconds'],
+    #     arrays2)
     
     
     #--------------------------------------------------------------------------------------------
     # MAKE RSW differences
     #--------------------------------------------------------------------------------------------
-    state_history_without_outliers = arrays['state_history_array']
-    state_history_with_outliers = arrays2['state_history_array']
-    time_column = state_history_without_outliers[:, [0]]  
-    #states_SPICE_RSW = ProcessingUtils.rotate_inertial_3_to_rsw(time_column, states_SPICE[:,0:3], state_history_array)
-    states_without_outliers_RSW = ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_without_outliers[:,1:4], state_history_without_outliers)
-    states_with_outliers_RSW = ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_with_outliers[:,1:4], state_history_without_outliers)
+    # state_history_without_outliers = arrays['state_history_array']
+    # state_history_with_outliers = arrays2['state_history_array']
+    # time_column = state_history_without_outliers[:, [0]]  
+    # #states_SPICE_RSW = ProcessingUtils.rotate_inertial_3_to_rsw(time_column, states_SPICE[:,0:3], state_history_array)
+    # states_without_outliers_RSW = ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_without_outliers[:,1:4], state_history_without_outliers)
+    # states_with_outliers_RSW = ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_with_outliers[:,1:4], state_history_without_outliers)
 
-    diff_RSW = (states_without_outliers_RSW - states_with_outliers_RSW)/1e3
+    # diff_RSW = (states_without_outliers_RSW - states_with_outliers_RSW)/1e3
 
-
-    
-    #Create timeframes 
-    df_frames, summary = split_into_timeframes(df, gap_hours=4)
-
-
-    ##############################################################################################
+        ##############################################################################################
     # PLOT FIGURES  
     ##############################################################################################
     
@@ -1737,7 +2029,7 @@ if __name__ == "__main__":
     
     out_dir = make_timestamped_folder("Results/AllModernJ2000Frame/PostProcessing")
     
-    make_figures = True
+    make_figures = False
     if make_figures == True:
         print("Making figures...")
         #--------------------------------------------------------------------------------------------
@@ -1827,256 +2119,22 @@ if __name__ == "__main__":
         # fig_outlier_residuals_colored.savefig(out_dir / "Residuals_time_colored_outliers.pdf")
     else:
         print("Plotting is turned off. Continuing...")
-    #--------------------------------------------------------------------------------------------
-    # COMPUTE ID WEIGHTS
-    #--------------------------------------------------------------------------------------------
-    print("Computing ID weights...")
 
-    #Compute std in arcseconds
-    std_per_id = df.groupby("id")[["residual_ra_last", "residual_dec_last"]].std().rename(
-        columns={"residual_ra_last": "std_ra", "residual_dec_last": "std_dec"}
-    )
 
-    # Compute RMSE in arcseconds
-    rmse_per_id = (
-        df.groupby("id")[["residual_ra_last", "residual_dec_last"]]
-        .apply(lambda g: np.sqrt((g**2).mean()))
-        .rename(columns={"residual_ra_last": "rmse_ra", "residual_dec_last": "rmse_dec"})
-    )
 
-
-    # Files with 1 Id (NaN stds) have an STD assigned as 1 arcsecond
-    std_per_id = std_per_id.fillna(1)
-
-    # Convert to radians
-    arcsec_to_rad = np.pi / (180.0 * 3600.0)
-    std_per_id_rad = std_per_id * arcsec_to_rad
-    rmse_per_id_rad = rmse_per_id * arcsec_to_rad
-
-    # Compute weights = 1 / σ² std or rmse
-    weights_std = 1.0 / (std_per_id_rad ** 2)
-    weights_std.columns = ["weight_ra", "weight_dec"]
-
-    weights_rmse = 1.0 / (rmse_per_id_rad ** 2)
-    weights_rmse.columns = ["weight_ra", "weight_dec"]
-
-
-    # Save to file
-    weights_std.to_csv(out_dir / "weights_per_id_std.txt", sep="\t", float_format="%.8e")
-    weights_rmse.to_csv(out_dir / "weights_per_id_rmse.txt", sep="\t", float_format="%.8e")
-    
-
-    #--------------------------------------------------------------------------------------------
-    # COMPUTE TIMEFRAME WEIGHTS
-    #--------------------------------------------------------------------------------------------
-    replacement_for_id = {}
-    usage_stats = {}
-
-    DEFAULT = 1  # fallback if an id has no valid stds
-
-    # Replace STD NaNs with appropriate values 
-    for id, g in summary.groupby("id"):
-        total_obs = g["n_obs"].sum()
-
-        # masks for valid stds
-        ra_mask = g["residual_ra_std"].notna()
-        dec_mask = g["residual_dec_std"].notna()
-
-        # weighted sums and totals (ignore NaNs)
-        ra_weight_sum = (g.loc[ra_mask, "residual_ra_std"] * g.loc[ra_mask, "n_obs"]).sum()
-        ra_n_used = g.loc[ra_mask, "n_obs"].sum()
-        dec_weight_sum = (g.loc[dec_mask, "residual_dec_std"] * g.loc[dec_mask, "n_obs"]).sum()
-        dec_n_used = g.loc[dec_mask, "n_obs"].sum()
-
-        # weighted means (fallback to weights DataFrame if nothing valid)
-        ra_mean = ra_weight_sum / ra_n_used if ra_n_used > 0 else std_per_id.loc[id,'std_ra']
-        dec_mean = dec_weight_sum / dec_n_used if dec_n_used > 0 else std_per_id.loc[id,'std_dec']
-
-        replacement_for_id[id] = {
-            "residual_ra_std": float(ra_mean),
-            "residual_dec_std": float(dec_mean),
-        }
-
-        usage_stats[id] = {
-            "total_obs": int(total_obs),
-            "ra_used": int(ra_n_used),
-            "ra_excluded": int(total_obs - ra_n_used),
-            "dec_used": int(dec_n_used),
-            "dec_excluded": int(total_obs - dec_n_used),
-        }
-
-    # Useful stats to check if replacement of NaNs makes sense
-    usage_df = pd.DataFrame.from_dict(usage_stats, orient='index')
-
-
-    def fill_two_cols(group):
-        rep = replacement_for_id[group.name]
-        group[["residual_ra_std","residual_dec_std"]] = (
-            group[["residual_ra_std","residual_dec_std"]].fillna(rep)
-        )
-        return group
-
-
-    summary = summary.groupby("id", group_keys=False).apply(fill_two_cols)
-
-    #--------------------------------------------------------------------------------------------
-    # Created tabulated weights
-    #--------------------------------------------------------------------------------------------
-    
-    #Add rmse and std per id to summary
-    summary = summary.merge(
-    rmse_per_id.rename(columns={'rmse_ra': 'rmse_ra_id', 'rmse_dec': 'rmse_dec_id'}),
-    on='id',
-    how='left')
-
-    summary = summary.merge(
-    std_per_id.rename(columns={'std_ra': 'std_ra_id', 'std_dec': 'std_dec_id'}),
-    on='id',
-    how='left')
-
-    # Add ID weights to summary
-    summary = summary.merge(
-    weights_rmse.rename(columns={'weight_ra': 'weight_rmse_ra_id', 'weight_dec': 'weight_rmse_dec_id'}),
-    on='id',
-    how='left')
-
-    summary = summary.merge(
-    weights_std.rename(columns={'weight_ra': 'weight_std_ra_id', 'weight_dec': 'weight_std_dec_id'}),
-    on='id',
-    how='left')
-
-    # Minimum accuracy
-    min_sigma_arcsec = 0.005   # 5mas minimum
-
-    
-    sigma_ra = summary['residual_ra_std'].astype(float).copy()
-    sigma_dec = summary['residual_dec_std'].astype(float).copy()
-
-    rmse_ra = summary['residual_ra_rms'].astype(float).copy()
-    rmse_dec = summary['residual_dec_rms'].astype(float).copy()
-    
-    if min_sigma_arcsec > 0:
-        sigma_ra = sigma_ra.clip(lower=min_sigma_arcsec)
-        sigma_dec = sigma_dec.clip(lower=min_sigma_arcsec)
-        
-        rmse_ra = rmse_ra.clip(lower=min_sigma_arcsec)
-        rmse_dec = rmse_dec.clip(lower=min_sigma_arcsec)
-        
-
-    summary['residual_ra_std'] = sigma_ra
-    summary['residual_dec_std'] = sigma_dec
-    
-    summary['residual_ra_rms'] = rmse_ra
-    summary['residual_dec_rms'] = rmse_dec
-    
-    #average of tf and id RMSE
-    summary['residual_ra_rms_tf_id'] = (summary['residual_ra_rms'] +  summary['rmse_ra_id'])/2
-    summary['residual_dec_rms_tf_id'] = (summary['residual_dec_rms'] +  summary['rmse_dec_id'])/2
-
-
-    #--------------------------------------------------------------------------------------------
-    # Compute arcsec to rad
-
-    arcsec_to_rad = np.pi / (180.0 * 3600.0)
-
-    #STD weights
-    sigma_ra_rad  = sigma_ra * arcsec_to_rad
-    sigma_dec_rad = sigma_dec * arcsec_to_rad
-
-    summary['weight_std_ra']  = 1.0 / (sigma_ra_rad ** 2)
-    summary['weight_std_dec'] = 1.0 / (sigma_dec_rad ** 2)
-
-    #RMS weights
-    rmse_ra_rad  = summary['residual_ra_rms'] * arcsec_to_rad
-    rmse_dec_rad = summary['residual_ra_rms'] * arcsec_to_rad
-
-    summary['weight_rmse_ra']  = 1.0 / (rmse_ra_rad ** 2)
-    summary['weight_rmse_dec'] = 1.0 / (rmse_dec_rad ** 2)
-
-    #RMS weights TF ID
-    rmse_ra_rad  = summary['residual_ra_rms_tf_id'] * arcsec_to_rad
-    rmse_dec_rad = summary['residual_dec_rms_tf_id'] * arcsec_to_rad
-
-    summary['weight_rmse_tf_id_ra']  = 1.0 / (rmse_ra_rad ** 2)
-    summary['weight_rmse_tf_id_dec'] = 1.0 / (rmse_dec_rad ** 2)
-
-
-
-    #--------------------------------------------------------------------------------------------
-    # Compute mean weight
-    
-    summary['mean_weight_std'] = summary[['weight_std_ra', 'weight_std_dec']].mean(axis=1)
-    summary['mean_weight_rmse'] = summary[['weight_rmse_ra', 'weight_rmse_dec']].mean(axis=1)
-    
-
-    # Create descale per night weights std
-    summary['weight_std_ra_scaled'] = summary['weight_std_ra'] / np.sqrt(summary['n_obs'])
-    summary['weight_std_dec_scaled'] = summary['weight_std_dec'] / np.sqrt(summary['n_obs'])
-
-    summary['mean_weight_std_scaled'] = summary[['weight_std_ra_scaled', 'weight_std_dec_scaled']].mean(axis=1)
-
-    # Create descale per night weights rmse
-    summary['weight_rmse_ra_scaled'] = summary['weight_rmse_ra'] / np.sqrt(summary['n_obs'])
-    summary['weight_rmse_dec_scaled'] = summary['weight_rmse_dec'] / np.sqrt(summary['n_obs'])
-
-    summary['mean_weight_rmse_scaled'] = summary[['weight_rmse_ra_scaled', 'weight_rmse_dec_scaled']].mean(axis=1)
-
-
-    # Create descaled per night weights rmse ID 
-    summary['weight_rmse_ra_id_scaled'] = summary['weight_rmse_ra_id'] / np.sqrt(summary['n_obs'])
-    summary['weight_rmse_dec_id_scaled'] = summary['weight_rmse_dec_id'] / np.sqrt(summary['n_obs'])
-
-    summary['mean_weight_rmse_id_scaled'] = summary[['weight_rmse_ra_id_scaled', 'weight_rmse_dec_id_scaled']].mean(axis=1)
-
-    # Create descaled per night weights std ID 
-    summary['weight_std_ra_id_scaled'] = summary['weight_std_ra_id'] / np.sqrt(summary['n_obs'])
-    summary['weight_std_dec_id_scaled'] = summary['weight_std_dec_id'] / np.sqrt(summary['n_obs'])
-
-    summary['mean_weight_std_id_scaled'] = summary[['weight_std_ra_id_scaled', 'weight_std_dec_id_scaled']].mean(axis=1)
-
-
-
-    # Create descaled per night weights rmse Hybrid ID TF 
-    summary['weight_rmse_ra_tf_id_scaled'] = summary['weight_rmse_tf_id_ra'] / np.sqrt(summary['n_obs'])
-    summary['weight_rmse_dec_tf_id_scaled'] = summary['weight_rmse_tf_id_dec'] / np.sqrt(summary['n_obs'])
-
-    summary['mean_weight_rmse_tf_id_scaled'] = summary[['weight_rmse_ra_tf_id_scaled', 'weight_rmse_dec_tf_id_scaled']].mean(axis=1)
-
-
-
-
-    # Compute difference between std and rmse metric
-    summary["ra_diff_id"] = summary["rmse_ra_id"] - summary["std_ra_id"]
-    summary["dec_diff_id"] = summary["rmse_dec_id"] - summary["std_dec_id"]
-
-
-
-
-
-    # Compute differences for timeframes
-    summary["ra_diff"] = summary["residual_ra_rms"] - summary["residual_ra_std"]
-    summary["dec_diff"] = summary["residual_dec_rms"] - summary["residual_dec_std"]
-
-
-    summary.to_csv(out_dir / "summary.txt", sep="\t", float_format="%.8e")
-
-
-
-
-
-    #--------------------------------------------------------------------------------------------
+        #--------------------------------------------------------------------------------------------
     # Check if weights can be assigned from summary
     #--------------------------------------------------------------------------------------------
-    observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations(
-            "Observations/RelativeObservations/",
-            system_of_bodies,file_names_loaded,
-            weights = summary,
-            timeframe_weights=True,
-            per_night_weights_hybrid=True)
+    # observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations(
+    #         "Observations/RelativeObservations/",
+    #         system_of_bodies,file_names_loaded,
+    #         weights = summary,
+    #         timeframe_weights=True,
+    #         per_night_weights_hybrid=True)
     #--------------------------------------------------------------------------------------------
     # Plot Weight Figures
     #--------------------------------------------------------------------------------------------
-    make_weight_figures = True
+    make_weight_figures = False
     if make_weight_figures == True:
         print("plotting weight figures...")
 
@@ -2210,4 +2268,3 @@ if __name__ == "__main__":
 
 
     print("end")
-

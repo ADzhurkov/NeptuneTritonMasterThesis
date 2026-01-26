@@ -18,6 +18,7 @@ from tudatpy.numerical_simulation import propagation_setup
 import tudatpy.estimation as estimation
 from tudatpy import util
 from tudatpy.estimation.observable_models_setup import links, model_settings
+from tudatpy.estimation import observations_setup 
 
 from tudatpy import numerical_simulation
 
@@ -26,7 +27,7 @@ from tudatpy.astro.time_conversion import DateTime
 
 
 from tudatpy.data import save2txt
-
+from tudatpy.estimation.observations import observations_processing
 import sys
 from pathlib import Path
 
@@ -62,11 +63,14 @@ def LoadObservations(
         system_of_bodies,
         files='None',
         weights = None,
+        ra_dec_independent_weights = True,
         std_weights = False,
         timeframe_weights=False,
         per_night_weights=False,
         per_night_weights_id=False,
         per_night_weights_hybrid=False,
+        Residual_filtering = True,
+        epoch_filter_dict = None,
         ):
     """
     Load Observations from a specific folder, assign weights if promted.  
@@ -82,6 +86,10 @@ def LoadObservations(
     weights: Pandas Dataframe
         required if weights need to be assigned. Must contain required columns for weight assignment.
         Default is weights per id
+    
+    ra_dec_independent_weights: bool
+        Default True: rmse hybrid weights indepedent for RA/DEC requires weights DataFrame
+    
     std_weights: bool
         Default False: rmse weights, True choose std weight column 
     timeframe_weights: bool
@@ -92,6 +100,11 @@ def LoadObservations(
         indicate if id weights descaled per night are provided (different column is selected)
     per_night_weights_hybrid: bool
         indicate if hybrid id/tf weights descaled per night are provided (different column is selected)
+    Residual_filtering: bool
+        indicate if filtering will be done by residual or by predifined dict file (True by default)
+    epoch_filter_dict: dict
+        key is file id, content is exact epochs of filtered observations per file  (None by default)
+
     Returns
     -------
     dict
@@ -120,6 +133,8 @@ def LoadObservations(
     observation_set_ids = []
     #Start loop over every csv in folder
     observation_collections_list = []
+    epochs_rejected = {}
+
     for file in raw_observation_files:
         # if file != 'Observations/ObservationsProcessedTest/Triton_327_nm0082.csv':
         #     continue
@@ -179,17 +194,114 @@ def LoadObservations(
         link_ends[links.receiver] = links.body_reference_point_link_end_id("Earth", str(Observatory))
         link_definition = links.LinkDefinition(link_ends)
 
-
-        # Create observation set 
-        observation_set_list.append(estimation.observations.single_observation_set(
+        #Create current observation settings
+        observation_single_set_current = estimation.observations.single_observation_set(
             model_settings.angular_position_type, 
             link_definition,
             angles,
             times, 
-            links.LinkEndType.receiver #observation.receiver 
-        ))
+            links.LinkEndType.receiver 
+            )
 
-        observation_settings_list.append(model_settings.angular_position(link_definition))
+        #Create current observation settings
+        current_observation_settings = model_settings.angular_position(link_definition)
+
+        #Convert to observation collection because can't compute residuals otherwise
+        observation_collection_current = estimation.observations.ObservationCollection([observation_single_set_current]) 
+
+        #-----------------------------------------------------------------------------------                   
+        FilterObservations = True
+        if FilterObservations == True and weights is None:
+            #Compute residuals
+            observation_simulators = observations_setup.observations_simulation_settings.create_observation_simulators(
+                    [current_observation_settings],
+                    system_of_bodies
+                    )
+
+            estimation.observations.compute_residuals_and_dependent_variables(
+                    observation_collection_current,
+                    observation_simulators,
+                    system_of_bodies
+                    )
+            residuals = observation_collection_current.get_concatenated_residuals()
+
+
+            #Create filter
+            arcsec_to_rad = np.pi / (180.0 * 3600.0)
+            upper_bound = 1.5 #arcseconds
+            upper_bound_rad = upper_bound*arcsec_to_rad
+
+            outlier_filter = observations_processing.observation_filter(
+                    observations_processing.ObservationFilterType.residual_filtering
+                    ,upper_bound_rad)
+
+
+            opposite_outlier_filter = observations_processing.observation_filter(
+                    observations_processing.ObservationFilterType.residual_filtering
+                    ,upper_bound_rad,use_opposite_condition=True)
+
+            
+            
+            #Filter single observation set
+            observation_single_set_current_filtered =  estimation.observations.create_filtered_observation_set(observation_single_set_current,outlier_filter)
+            
+            
+            #Print how many observations were filtered if any()
+            rejected_observation_single_set_current =  estimation.observations.create_filtered_observation_set(
+                    observation_single_set_current,
+                    opposite_outlier_filter)
+            #if np.shape(rejected_observation_single_set_current.residuals)[0] > 0:
+            
+            nr_all = np.shape(observation_single_set_current.residuals)[0] # all observations
+            nr_filtered = np.shape(observation_single_set_current_filtered.residuals)[0] # filtered observations
+            nr_rejected = np.shape(rejected_observation_single_set_current.residuals)[0] # rejected observations
+            
+            print("====================")
+            print("FOR SET ID: ", set_id)
+            print("all: ",nr_all)
+            print("filtered: ",nr_filtered)
+            print("rejected: ",nr_rejected)
+            print("====================")
+
+            #Compute rejected epochs
+            epochs_all = observation_single_set_current.observation_times
+            epochs_filtered = observation_single_set_current_filtered.observation_times
+            epochs_rejected_current = [t for t in epochs_all if t not in epochs_filtered]
+
+            epochs_rejected[set_id] = [t.to_float() for t in epochs_rejected_current]
+
+            #" is ", np.shape(rejected_observation_single_set_current.residuals))
+            
+
+
+
+
+            #-----------------------------------------------------------------------------------   
+            # Create a time based filter 
+            if Residual_filtering == False:
+                if np.shape(epoch_filter_dict[set_id])[0] != 0:
+                    epoch_filter = observations_processing.observation_filter(
+                        observations_processing.ObservationFilterType.epochs_filtering
+                            ,epoch_filter_dict[set_id])
+
+                    observation_single_set_current_filtered =  estimation.observations.create_filtered_observation_set(
+                        observation_single_set_current,epoch_filter)
+                else:
+                    observation_single_set_current_filtered = observation_single_set_current
+
+            #-----------------------------------------------------------------------------------   
+
+
+
+
+        #-----------------------------------------------------------------------------------    
+        # Append to list
+        if FilterObservations == True and weights is None:
+            observation_set_list.append(observation_single_set_current_filtered)
+        else:
+            observation_set_list.append(observation_single_set_current)
+
+        observation_settings_list.append(current_observation_settings)
 
         #Create Observation Collection for the current file and assign weights
         if weights is not None:
@@ -199,8 +311,86 @@ def LoadObservations(
             angles,
             times, 
             links.LinkEndType.receiver)
-            
-            observation_collection_current = estimation.observations.ObservationCollection([observation_single_set_current]) 
+            #-----------------------------------------------------------------------------------          
+            if FilterObservations == True:
+                #Compute residuals
+                observation_simulators = observations_setup.observations_simulation_settings.create_observation_simulators(
+                        [current_observation_settings],
+                        system_of_bodies
+                        )
+
+                estimation.observations.compute_residuals_and_dependent_variables(
+                        observation_collection_current,
+                        observation_simulators,
+                        system_of_bodies
+                        )
+                residuals = observation_collection_current.get_concatenated_residuals()
+
+
+                #Create filter
+                arcsec_to_rad = np.pi / (180.0 * 3600.0)
+                upper_bound = 1.5 #arcseconds
+                upper_bound_rad = upper_bound*arcsec_to_rad
+
+                outlier_filter = observations_processing.observation_filter(
+                        observations_processing.ObservationFilterType.residual_filtering
+                        ,upper_bound_rad)
+
+
+                opposite_outlier_filter = observations_processing.observation_filter(
+                        observations_processing.ObservationFilterType.residual_filtering
+                        ,upper_bound_rad,use_opposite_condition=True)
+
+                
+                
+                #Filter single observation set
+                observation_single_set_current_filtered =  estimation.observations.create_filtered_observation_set(observation_single_set_current,outlier_filter)
+                
+                
+                #Print how many observations were filtered if any()
+                rejected_observation_single_set_current =  estimation.observations.create_filtered_observation_set(
+                        observation_single_set_current,
+                        opposite_outlier_filter)
+
+                nr_all = np.shape(observation_single_set_current.residuals)[0] # all observations
+                nr_filtered = np.shape(observation_single_set_current_filtered.residuals)[0] # filtered observations
+                nr_rejected = np.shape(rejected_observation_single_set_current.residuals)[0] # rejected observations
+                
+                print("====================")
+                print("FOR SET ID: ", set_id)
+                print("all: ",nr_all)
+                print("filtered: ",nr_filtered)
+                print("rejected: ",nr_rejected)
+                print("====================")
+
+
+                #-----------------------------------------------------------------------------------   
+                # Create a time based filter 
+                if Residual_filtering == False:
+                    epoch_filter = observations_processing.observation_filter(
+                        observations_processing.ObservationFilterType.epochs_filtering
+                            ,epoch_filter_dict[set_id])
+
+                    observation_single_set_current_filtered =  estimation.observations.create_filtered_observation_set(
+                        observation_single_set_current,epoch_filter)
+                                
+                    print("====================")
+                    print("FOR EPOCH FILTER: ", set_id)
+                    print("all: ",nr_all)
+                    print("filtered: ",len(observation_single_set_current_filtered.residuals))
+                    print("====================")
+
+
+                #-----------------------------------------------------------------------------------   
+
+
+
+
+            #-----------------------------------------------------------------------------------     
+            if FilterObservations == True:
+                observation_collection_current = estimation.observations.ObservationCollection([observation_single_set_current_filtered]) 
+            else:
+                observation_collection_current = estimation.observations.ObservationCollection([observation_single_set_current]) 
 
             if timeframe_weights == True:
                 # Filter all rows belonging to this id  
@@ -212,22 +402,38 @@ def LoadObservations(
                 expanded = weights_id.loc[weights_id.index.repeat(weights_id['n_obs'] * 2)]
 
                 #choose the approriate column based on conditions
-                if per_night_weights == True:
-                    weight_column = 'mean_weights_std_scaled' if std_weights else 'mean_weight_rmse_scaled' 
-                elif per_night_weights_id ==True:
-                    weight_column = 'mean_weight_std_id_scaled' if std_weights else 'mean_weight_rmse_id_scaled'
-                elif per_night_weights_hybrid == True:
-                    weight_column = 'mean_weight_std_tf_id_scaled' if std_weights else  'mean_weight_rmse_tf_id_scaled'
-                else:
-                    weight_column = 'mean_weight_std' if std_weights else 'mean_weight_rmse'
+                if ra_dec_independent_weights == False:
+                    if per_night_weights == True:
+                        weight_column = 'mean_weights_std_scaled' if std_weights else 'mean_weight_rmse_scaled' 
+                    elif per_night_weights_id ==True:
+                        weight_column = 'mean_weight_std_id_scaled' if std_weights else 'mean_weight_rmse_id_scaled'
+                    elif per_night_weights_hybrid == True:
+                        weight_column = 'mean_weight_std_tf_id_scaled' if std_weights else  'mean_weight_rmse_tf_id_scaled'
+                    else:
+                        weight_column = 'mean_weight_std' if std_weights else 'mean_weight_rmse'
+                    
+                    #assign values based on weight column
+                    tabulated_weights = expanded[weight_column].values
+                  
+                elif ra_dec_independent_weights == True:
+                    weight_ra_column = 'weight_rmse_ra_tf_id_scaled'
+                    weight_dec_column = 'weight_rmse_dec_tf_id_scaled'
+                    ra_weights = expanded[weight_ra_column].values
+                    dec_weights = expanded[weight_dec_column].values
                 
-                tabulated_weights = expanded[weight_column].values
+                    tabulated_weights = np.empty((ra_weights.size + dec_weights.size,), dtype=ra_weights.dtype)
 
+                    #Assign values based on 2 weight columns intertwined
+                    tabulated_weights[0::2] = ra_weights  # Every even index gets RA
+                    tabulated_weights[1::2] = dec_weights  # Every odd index gets DEC
+
+                    
                 tabulated_weights = tabulated_weights.reshape(-1, 1)
 
                 #new = np.full_like(tabulated_weights, 10**10)
 
                 observation_collection_current.set_tabulated_weights(tabulated_weights)
+
 
             #------------------------------------------------------------------------------------        
             #Assign weights from ID
@@ -256,7 +462,9 @@ def LoadObservations(
     if weights is not None:
         observations = observation_collection_full
         print('size of full observations with weights: ', len(observation_collection_full.get_concatenated_observation_times()))
-    return observations,observation_settings_list,observation_set_ids
+    
+
+    return observations,observation_settings_list,observation_set_ids,epochs_rejected
 
 
 

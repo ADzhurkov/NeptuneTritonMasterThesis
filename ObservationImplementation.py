@@ -133,23 +133,33 @@ def main(settings: dict,out_dir):
         
         if settings["obs"]["use_weights"] == True:
 
-            observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations(
+            observations,observations_settings,observation_set_ids,epochs_rejected = ObsFunc.LoadObservations(
                         observations_folder_path,
                         system_of_bodies,
                         files,
                         weights = settings["obs"]["weights"],
+                        ra_dec_independent_weights = settings["obs"]["ra_dec_independent_weights"],
                         std_weights = settings["obs"]["std_weights"],
                         timeframe_weights = settings["obs"]['timeframe_weights'],
                         per_night_weights = settings["obs"]['per_night_weights'],
                         per_night_weights_id = settings["obs"]["per_night_weights_id"],
-                        per_night_weights_hybrid = settings["obs"]["per_night_weights_hybrid"])
+                        per_night_weights_hybrid = settings["obs"]["per_night_weights_hybrid"],
+                        Residual_filtering = settings["obs"]["residual_filtering"],
+                        epoch_filter_dict = settings["obs"]["epoch_filter_dict"])
         else:
-            observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations(
+            observations,observations_settings,observation_set_ids, epochs_rejected = ObsFunc.LoadObservations(
                         observations_folder_path,
                         system_of_bodies,
-                        files)
+                        files,
+                        Residual_filtering = settings["obs"]["residual_filtering"])
 
+        #Always save the rejected epochs for analysis
+        #--------------------------------------------------------------
+        output_file = out_dir / "residuals_rejected_epochs.json"
 
+        with open(output_file, 'w') as f:
+            json.dump(epochs_rejected, f, indent=2)
+        #--------------------------------------------------------------
 
         #observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,files)
         Observatories = []
@@ -164,11 +174,19 @@ def main(settings: dict,out_dir):
     ##############################################################################################
 
 
-    estimation_output, original_parameter_vector= PropFuncs.Create_Estimation_Output(settings['est'],
+    estimation_output, original_parameter_vector, parameters_desc = PropFuncs.Create_Estimation_Output(settings,
     system_of_bodies,propagator_settings,observations_settings,observations)
 
     print("END OF ESTIMATION")
 
+    output_file = out_dir / "estimation_summary.txt"
+
+    with open(output_file, "w") as f:
+        f.write(f"Original initial states:\n{original_parameter_vector}\n\n")
+        f.write(
+            "Estimated Parameters Descriptions are:\n"
+            f"{parameters_desc}\n"
+        )
     ##############################################################################################
     # RETRIEVE INFO
     ##############################################################################################
@@ -249,7 +267,7 @@ def main(settings: dict,out_dir):
 
         observation_times_DateFormat = FigUtils.ConvertToDateTime(observation_times)
                 
-        residuals = ObsFunc.Get_SPICE_residual_from_observations(observations,Observatories,system_of_bodies,global_frame_orientation)
+        residuals = ObsFunc.Get_SPICE_residual_from_observations(observations,Observatories,system_of_bodies,settings['env']["global_frame_orientation"])
         residuals_RA_SPICE = residuals[0]
         residuals_DEC_SPICE = residuals[1]
 
@@ -281,10 +299,10 @@ def main(settings: dict,out_dir):
         fig_rms = FigUtils.Residuals_RMS(residual_history_arcseconds)
 
 
-        states_SPICE_RSW = ProcessingUtils.rotate_inertial_3_to_rsw(time_column, states_SPICE[:,0:3], state_history_array)
+        states_SPICE_RSW = ProcessingUtils.rotate_inertial_3_to_rsw(time_column, states_SPICE[:,0:3], states_SPICE_with_time)
         states_sim_RSW = []
-        states_sim_RSW.append(ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_initial_array[:,1:4], state_history_array))
-        states_sim_RSW.append(ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_array[:,1:4], state_history_array))
+        states_sim_RSW.append(ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_initial_array[:,1:4], states_SPICE_with_time))
+        states_sim_RSW.append(ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_array[:,1:4], states_SPICE_with_time))
 
         diff_sim_RSW = (states_sim_RSW[0] - states_sim_RSW[-1])/1e3
         diff_sim_SPICE_RSW = (states_sim_RSW[0] - states_SPICE_RSW)/1e3
@@ -325,6 +343,9 @@ def main(settings: dict,out_dir):
         arr2 = np.stack(state_history_initial_array, axis=0)
         np.save(out_dir / "state_history_initial_array.npy", arr2)
 
+        np.save(out_dir / "state_history_array_full.npy",state_history_array_full)
+
+
         arr3 = np.stack(states_SPICE_with_time, axis=0)
         np.save(out_dir / "states_SPICE_with_time.npy", arr3)
 
@@ -346,7 +367,20 @@ def main(settings: dict,out_dir):
 
         residuals_sorted = observations.get_residuals()
         np.save(out_dir / "residuals_sorted.npy",np.array(residuals_sorted,dtype=object))
-    
+
+        parameter_history = estimation_output.parameter_history
+        best_iteration = estimation_output.best_iteration
+        correlations = estimation_output.correlations
+
+        best_parameter_update = parameter_history[:,0] - parameter_history[:,best_iteration]
+
+        np.save(out_dir / "parameter_history.npy", parameter_history)
+        np.save(out_dir / "best_iteration.npy",best_iteration)
+        np.save(out_dir / "correlations.npy",correlations)    
+
+
+
+
     elif settings['obs']['type'] == 'Simulated':
         print("Saving simulated observations residuals...")
         residuals_j2000, residuals_rsw = ProcessingUtils.format_residual_history(estimation_output.residual_history,
@@ -377,10 +411,10 @@ def main(settings: dict,out_dir):
 
         
 
-        states_SPICE_RSW = ProcessingUtils.rotate_inertial_3_to_rsw(time_column, states_SPICE[:,0:3], state_history_array)
+        states_SPICE_RSW = ProcessingUtils.rotate_inertial_3_to_rsw(time_column, states_SPICE[:,0:3], states_SPICE_with_time)
         states_sim_RSW = []
-        states_sim_RSW.append(ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_initial_array[:,1:4], state_history_array))
-        states_sim_RSW.append(ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_array[:,1:4], state_history_array))
+        states_sim_RSW.append(ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_initial_array[:,1:4], states_SPICE_with_time))
+        states_sim_RSW.append(ProcessingUtils.rotate_inertial_3_to_rsw(time_column, state_history_array[:,1:4], states_SPICE_with_time))
 
         diff_sim_RSW = (states_sim_RSW[0] - states_sim_RSW[-1])/1e3
         diff_sim_SPICE_RSW = (states_sim_RSW[0] - states_SPICE_RSW)/1e3
@@ -416,14 +450,14 @@ def main(settings: dict,out_dir):
         np.save(out_dir / "correlations.npy",correlations)    
 
 
-        fig = FigUtils.plot_correlation_matrix(correlations, settings['est']['est_parameters'])
-        fig.savefig(out_dir / 'correlations.pdf')
+        # fig = FigUtils.plot_correlation_matrix(correlations, settings['est']['est_parameters'])
+        # fig.savefig(out_dir / 'correlations.pdf')
 
-        fig1 = FigUtils.plot_parameter_updates(best_parameter_update,  settings['est']['est_parameters'])
-        fig1.savefig(out_dir / "parameter_update.pdf")
+        # fig1 = FigUtils.plot_parameter_updates(best_parameter_update,  settings['est']['est_parameters'])
+        # fig1.savefig(out_dir / "parameter_update.pdf")
         
-        fig2 = FigUtils.plot_parameter_history(parameter_history, settings['est']['est_parameters'], best_iteration=best_iteration)
-        fig2.savefig(out_dir / "parameter_history.pdf")
+        # fig2 = FigUtils.plot_parameter_history(parameter_history, settings['est']['est_parameters'], best_iteration=best_iteration)
+        #fig2.savefig(out_dir / "parameter_history.pdf")
         #--------------------------------------------------------------------------
         #Get Different Flavors of FFTs
         #--------------------------------------------------------------------------
@@ -469,6 +503,10 @@ def main(settings: dict,out_dir):
 
     #Remove Pandas Data frame of the weights from the settings to be able to save and reduce file size
     settings['obs'].pop('weights', None)
+
+    #Convert initial state to this
+    if 'initial_state' in settings['prop']:
+        settings['prop']['initial_state'] = settings['prop']['initial_state'].tolist()
     #Save yaml settings file
     with open(out_dir / "settings.yaml", "w", encoding="utf-8") as f:
         yaml.safe_dump(settings, f, sort_keys=False, allow_unicode=True)
