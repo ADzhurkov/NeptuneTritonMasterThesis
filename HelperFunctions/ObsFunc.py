@@ -157,7 +157,7 @@ def LoadObservations(
         # Add the ground station to the environment
         environment_setup.add_ground_station(
         system_of_bodies.get_body("Earth"),
-        Observatory,
+        set_id,
         [observatory_altitude, observatory_latitude, observatory_longitude],
         element_conversion.geodetic_position_type)
 
@@ -191,7 +191,7 @@ def LoadObservations(
         # Define link ends
         link_ends = dict()                  #To change
         link_ends[links.transmitter] = links.body_origin_link_end_id("Triton")
-        link_ends[links.receiver] = links.body_reference_point_link_end_id("Earth", str(Observatory))
+        link_ends[links.receiver] = links.body_reference_point_link_end_id("Earth", str(set_id))
         link_definition = links.LinkDefinition(link_ends)
 
         #Create current observation settings

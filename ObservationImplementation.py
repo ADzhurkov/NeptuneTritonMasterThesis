@@ -511,7 +511,8 @@ def main(settings: dict,out_dir):
     with open(out_dir / "settings.yaml", "w", encoding="utf-8") as f:
         yaml.safe_dump(settings, f, sort_keys=False, allow_unicode=True)
 
-
+    return estimation_output,observations
+#---------------------------------------------------------------------------------------------------
 
 def make_timestamped_folder(base_path="Results"):
     folder_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
