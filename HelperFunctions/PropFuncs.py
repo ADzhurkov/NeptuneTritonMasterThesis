@@ -9,10 +9,12 @@ from tudatpy.estimation.observable_models_setup import links, model_settings
 from tudatpy.estimation import observations_setup
 from tudatpy.estimation import estimation_analysis
 from tudatpy.dynamics import parameters_setup
-#from tudatpy.numerical_simulation import estimation, estimation_setup,Time
+from tudatpy.numerical_simulation import estimation_setup
+from tudatpy.estimation.observable_models_setup import links
 
 from tudatpy.interface import spice
 
+import ObsFunc
 
 def Create_Env(settings_dict):
     # Create default body settings and bodies at Neptune J2000
@@ -91,14 +93,23 @@ def Create_Env(settings_dict):
         pole_precession= np.array([0,0]) # alpha_0_dot and delta_0_dot are 0
         merdian_periodic_terms = {np.deg2rad(52.316/36525/24/3600): (np.deg2rad(-0.48), np.deg2rad(357.85))} #w_N_i, W_i, Phi_N_i in that order
 
+        
         # Values for alpha and delta from IAU 2015
         w_n_i = np.deg2rad(52.316/36525/24/3600)
         alpha_i = np.deg2rad(0.7)
         delta_i = np.deg2rad(-0.51)
         phi = np.deg2rad(357.85)
 
+
         # Create the numpy array for [alpha_i, delta_i] as a 2x1 column vector
         alpha_delta = np.array([alpha_i, delta_i])
+
+        if 'initial_Pole_Pos' in settings_dict:
+            nominal_pole = settings_dict['initial_Pole_Pos']
+        if 'initial_Pole_lib_deg1' in settings_dict:
+            alpha_delta = settings_dict['initial_Pole_lib_deg1']
+
+
 
         # Create the dictionary
         data = {w_n_i: (alpha_delta, phi)}
@@ -155,7 +166,7 @@ def Create_Env(settings_dict):
                 original_frame, target_frame, nominal_meridian,nominal_pole,rotation_rate,pole_precession,merdian_periodic_terms,pole_periodic_terms,angle_base_frame="J2000")
 
 
-#---------------------------------------------------------------------------------------------------------------------------------------------------
+    #---------------------------------------------------------------------------------------------------------------------------------------------------
 
     body_settings.get("Neptune").ephemeris_settings = environment_setup.ephemeris.direct_spice(
             global_frame_origin, global_frame_orientation)
@@ -169,9 +180,11 @@ def Create_Env(settings_dict):
     body_settings.get( "Earth" ).rotation_model_settings = environment_setup.rotation_model.gcrs_to_itrs(
     precession_nutation_theory, global_frame_orientation)
 
+
     # # Create system of selected bodies
     bodies = environment_setup.create_system_of_bodies(body_settings)
     
+
     return body_settings,bodies
 
 
@@ -466,9 +479,62 @@ def Create_Estimation_Output(settings,system_of_bodies,propagator_settings,pseud
 
     convergence_settings = estimation_analysis.estimation_convergence_checker(maximum_iterations=5)
 
+    #CREATE INVERESE A PRIORI COVARIANCE
+    ############################################################################################################
+    inverse_apriori_cov = []
+    if settings['est']['a_priori_covariance'] == True:
+        # Get parameter indices
+        n_params = parameters_to_estimate.parameter_set_size
+
+        #Parameter identifies IAU (pole/lib are not working yet 
+        parameter_identifies = parameters_to_estimate.get_parameter_identifiers()
+
+        pole_pos_identifier = parameter_identifies[0]
+        pole_lib_identifier = parameter_identifies[1]
+        # Create a priori covariance with very large (weak) default
+        apriori_cov = np.eye(n_params) * (5e6)**2  # 5k km uncertainty 
+
+        # Get indices for pole position and librations (rotation model parameters)
+        if settings['est']['a_priori_pole'] == True:
+            pole_indices = parameters_to_estimate.indices_for_parameter_type(pole_pos_identifier)
+            #Apply constraints to pole position
+            #Example: uncertainty in pole right ascension and declination
+            for idx_range in pole_indices:
+                for i in range(idx_range[0], idx_range[0]+idx_range[1]):
+                    apriori_cov[i, i] = (5 * np.pi/180)**2  # 5 degree uncertainty in radians
+
+        if settings['est']['a_priori_lib'] == True:
+            libration_indices = parameters_to_estimate.indices_for_parameter_type(pole_lib_identifier)
+            
+            if settings['est']['a_priori_lib_deg'] == 1:
+                # Apply constraints to libration amplitudes
+                # Conservative uncertainties: [alpha_1, delta_1, alpha_2, delta_2]
+                libration_sigmas = [0.003, 0.002] #, 2e-5, 1e-5]  # rad
+
+                libration_sigmas[0] = np.abs(0.01*3)  # alpha_1 ~300% of 0.011 rad 
+                libration_sigmas[1] = np.abs(0.01*3)  # delta_1 ~300% of 0.008 rad 
+            if settings['est']['a_priori_lib_deg'] == 2:
+                
+                libration_sigmas = [0.003, 0.002, 2e-5, 1e-5]  # rad
+                libration_sigmas[0] = np.abs(0.01*3)  # alpha_1 ~300% of 0.011 rad 
+                libration_sigmas[1] = np.abs(0.01*3)  # delta_1 ~300% of 0.008 rad 
+                libration_sigmas[2] = np.abs(4.2e-5*1)   # alpha_2 ~100% of 4.2e-5 rad
+                libration_sigmas[3] = np.abs(4.2e-5*1)   # delta_2 ~100% of 1.5e-5 rad 
+
+            for idx_range in libration_indices:
+                for j, i in enumerate(range(idx_range[0], idx_range[0]+idx_range[1])):
+                    param_idx = j % 2  # Cycles through 0,1,2,3 if multiple sets
+                    apriori_cov[i, i] = libration_sigmas[param_idx]**2
+                # Triton position indices remain at 1e20 (no constraint)
+
+        # Invert for Tudat
+        inverse_apriori_cov = np.linalg.inv(apriori_cov)
+
+    ############################################################################################################
     # Create input object for the estimation
     estimation_input = estimation_analysis.EstimationInput(
         observations_and_times=pseudo_observations,
+        inverse_apriori_covariance=inverse_apriori_cov,
         convergence_checker=convergence_settings)
 
     # Set methodological options

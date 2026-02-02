@@ -31,6 +31,15 @@ from tudatpy.estimation.observations import observations_processing
 import sys
 from pathlib import Path
 
+
+import pandas as pd
+import warnings
+
+from typing import Dict, List, Tuple
+from tudatpy.estimation.observable_models_setup import links
+
+
+
 # Get the path to the directory containing this file
 current_dir = Path(__file__).resolve().parent
 
@@ -427,7 +436,18 @@ def LoadObservations(
                     tabulated_weights[0::2] = ra_weights  # Every even index gets RA
                     tabulated_weights[1::2] = dec_weights  # Every odd index gets DEC
 
-                    
+
+                n_obs = np.shape(observation_collection_current.get_observation_times())[1]
+                expected_length = 2 * n_obs  # Should be 402 for 201 observations
+
+                current_length = len(tabulated_weights)
+                missing_values = expected_length - current_length
+
+                if missing_values > 0:
+                        mean_weight = np.mean(tabulated_weights)
+                        print(f"Adding {missing_values} values with mean weight {mean_weight}")
+                        tabulated_weights = np.append(tabulated_weights, [mean_weight] * missing_values)
+
                 tabulated_weights = tabulated_weights.reshape(-1, 1)
 
                 #new = np.full_like(tabulated_weights, 10**10)
@@ -643,4 +663,235 @@ def PlotResidualsTime(observations,Observatories,system_of_bodies,output_folder)
     fig.savefig(output_folder_path / "DEC_residuals_SPICE.pdf")
 
 
+
+#---------------------------------------------------------------------------------------------------------------------------
+#BETTER WAY TO ASSIGN WEIGHTS
+#---------------------------------------------------------------------------------------------------------------------------
+
+def compute_and_assign_weights(residuals: np.ndarray, 
+                                observations,
+                                gap_threshold_hours: float = 4.0,
+                                min_obs_per_frame: int = 1,
+                                weight_type: str = 'hybrid') -> Tuple:
+    """
+    Compute and assign weights to observation sets based on residuals.
+    
+    Parameters:
+    -----------
+    residuals : np.ndarray
+        Array of shape [n, 3] containing [time, RA_residual, DEC_residual]
+    observations : ObservationCollection
+        Collection of all observations
+    gap_threshold_hours : float
+        Maximum time gap (hours) to keep observations in same timeframe
+    min_obs_per_frame : int
+        Minimum observations per timeframe before allowing a break
+        
+    Returns:
+    --------
+    observations : ObservationCollection
+        Updated observation collection with assigned weights
+    weights_df : pd.DataFrame
+        DataFrame containing weight information for all observations
+    """
+    
+    # Extract observation sets
+    sets = observations.sorted_observation_sets
+    ObservableType = list(sets.keys())[0]
+    
+    all_observations_sets = []
+    for observable_type, inner_dict in sets.items():
+        for link_end_id, observation_list in inner_dict.items():
+            all_observations_sets.extend(observation_list)
+    
+    # Prepare data structures for results
+    weights_data = []
+    current_idx = 0
+    
+    # Process each observation set
+    for set_idx, obs_set in enumerate(all_observations_sets):
+        # Get reference point ID for this set
+        ref_point_id = obs_set.link_definition.link_end_id(links.receiver).reference_point
+        
+        # Determine number of observations in this set
+        n_obs = np.shape(obs_set.observation_times)[0]
+        
+        obs_times_obs = obs_set.observation_times
+        obs_times_test = [t.to_float() for t in obs_times_obs]
+
+        # Extract residuals for this observation set
+        set_residuals = residuals[current_idx:current_idx + n_obs, :]
+        times = set_residuals[:, 0]
+        ra_residuals = set_residuals[:, 1]
+        dec_residuals = set_residuals[:, 2]
+        
+      
+        # Test if times are consistent:
+        diff = obs_times_test - times
+        assert np.allclose(obs_times_test, times), \
+            f"Times don't match! Max difference: {np.max(np.abs(diff))}"
+
+
+        # 1. Compute global RMSE weights (constant for entire set)
+        ra_rmse_global = np.sqrt(np.mean(ra_residuals**2))
+        dec_rmse_global = np.sqrt(np.mean(dec_residuals**2))
+        
+        # Clip values according to min_sigma value
+        min_sigma_arcsec = 0.01 # 10 mas minimum rmse
+        min_sigma_rad = 0.01 / (3600 * 180 / np.pi) # 10mas in rad
+        
+
+        if np.any(ra_rmse_global < min_sigma_rad):
+            n_clipped = np.sum(ra_rmse_global < min_sigma_rad)
+            #warnings.warn(f"RA ID RMSE values were below minimum sigma and were clipped for {ref_point_id}")
+            ra_rmse_global = min_sigma_rad
+        if np.any(dec_rmse_global < min_sigma_rad):
+            n_clipped = np.sum(dec_rmse_global < min_sigma_rad)
+            #warnings.warn(f"DEC ID RMSE values were below minimum sigma and were clipped for {ref_point_id}")
+            dec_rmse_global = min_sigma_rad       
+
+        # ra_rmse_global = ra_rmse_global.clip(lower=min_sigma_rad)
+        # dec_rmse_global = dec_rmse_global.clip(lower=min_sigma_rad)
+
+
+        weight_ra_global = 1.0 / (ra_rmse_global**2) if ra_rmse_global > 0 else 1.0
+        weight_dec_global = 1.0 / (dec_rmse_global**2) if dec_rmse_global > 0 else 1.0
+        
+        # 2. Split into timeframes based on gaps
+        timeframes = split_observations_into_timeframes(
+            times, 
+            gap_threshold_hours=gap_threshold_hours,
+            min_obs_per_frame=min_obs_per_frame
+        )
+        
+        n_timeframes = timeframes.max() + 1
+        
+        # 3. Compute local (per-timeframe) weights
+        weight_ra_local = np.zeros(n_obs)
+        weight_dec_local = np.zeros(n_obs)
+        
+        for frame_idx in range(n_timeframes):
+            # Find observations in this timeframe
+            mask = (timeframes == frame_idx)
+            
+            if np.sum(mask) > 0:
+                # Compute RMSE for this timeframe
+                ra_rmse_frame = np.sqrt(np.mean(ra_residuals[mask]**2))
+                dec_rmse_frame = np.sqrt(np.mean(dec_residuals[mask]**2))
+
+                #Clip values according to min_sigma_rad
+                if np.any(ra_rmse_frame < min_sigma_rad):
+                    #warnings.warn(f"RA Timeframe RMSE values were below minimum sigma and were clipped for {ref_point_id} frame id {frame_idx}")
+                    ra_rmse_frame = min_sigma_rad
+                if np.any(dec_rmse_frame < min_sigma_rad):
+                    #warnings.warn(f"DEC Timeframe RMSE values were below minimum sigma and were clipped {ref_point_id} frame id {frame_idx}")
+                    dec_rmse_frame = min_sigma_rad
+ 
+
+                n_obs_timeframe = len(ra_residuals[mask])
+
+                # Assign weights (inverse variance)
+                weight_ra_local[mask] = (1.0 / (ra_rmse_frame**2))/n_obs_timeframe if ra_rmse_frame > 0 else 10**3 #Very bad weight
+                weight_dec_local[mask] = (1.0 / (dec_rmse_frame**2))/n_obs_timeframe if dec_rmse_frame > 0 else 10**3 #Very bad weight
+        
+        # 4. Compute hybrid weights (geometric mean)
+        # You can adjust this combination strategy
+        weight_ra_hybrid = np.sqrt(weight_ra_global * weight_ra_local)
+        weight_dec_hybrid = np.sqrt(weight_dec_global * weight_dec_local)
+        
+        weight_ra_hybrid_old = (weight_ra_global + weight_ra_local)/2
+        weight_dec_hybrid_old = (weight_dec_global + weight_dec_local)/2
+
+        # Determine which weights to use based on weight_type
+        if weight_type == 'hybrid':
+            weight_ra_selected = weight_ra_hybrid
+            weight_dec_selected = weight_dec_hybrid
+        elif weight_type == 'hybrid_old':
+            weight_ra_selected = weight_ra_hybrid_old
+            weight_dec_selected = weight_dec_hybrid_old
+        elif weight_type == 'id':
+            weight_ra_selected = np.full(n_obs, weight_ra_global)  # Broadcast to array
+            weight_dec_selected = np.full(n_obs, weight_dec_global)
+        elif weight_type == 'timeframe':
+            weight_ra_selected = weight_ra_local
+            weight_dec_selected = weight_dec_local
+        else:
+            raise ValueError(f"Unknown weight_type: {weight_type}")
+        
+        # 5. Format weights for set_tabulated_weights (interleaved RA, DEC)
+        weights_array = np.zeros(2 * n_obs)
+        weights_array[0::2] = weight_ra_selected   # RA weights at even indices
+        weights_array[1::2] = weight_dec_selected  # DEC weights at odd indices
+        
+        # 6. Assign weights to observation set
+        obs_set.set_tabulated_weights(weights_array)
+        
+
+        # 7. Store data for DataFrame (only selected weights)
+        for obs_idx in range(n_obs):
+            weights_data.append({
+                'set_index': set_idx,
+                'ref_point_id': ref_point_id,
+                'obs_index': obs_idx,
+                'global_obs_index': current_idx + obs_idx,
+                'timeframe': timeframes[obs_idx],
+                'time': times[obs_idx],
+                'ra_residual': ra_residuals[obs_idx],
+                'dec_residual': dec_residuals[obs_idx],
+                'ra_rmse_id': ra_rmse_global,
+                'dec_rmse_id': dec_rmse_global,
+                'weight_ra': weight_ra_selected[obs_idx],
+                'weight_dec': weight_dec_selected[obs_idx],
+                'weight_type': weight_type,  # Optional: track which type was used
+            })
+            
+        # Update index for next set
+        current_idx += n_obs
+    
+    # Create DataFrame
+    weights_df = pd.DataFrame(weights_data)
+    
+    return observations, weights_df
+
+
+def split_observations_into_timeframes(times: np.ndarray, 
+                                       gap_threshold_hours: float = 4.0,
+                                       min_obs_per_frame: int = 1) -> np.ndarray:
+    """
+    Split observations into timeframes based on time gaps.
+    
+    Parameters:
+    -----------
+    times : np.ndarray
+        Array of observation times (assumed sorted)
+    gap_threshold_hours : float
+        Maximum gap between observations in same timeframe (hours)
+    min_obs_per_frame : int
+        Minimum observations required before allowing a frame break
+        
+    Returns:
+    --------
+    timeframes : np.ndarray
+        Array of timeframe indices for each observation
+    """
+    n_obs = len(times)
+    gap_threshold_seconds = gap_threshold_hours * 3600.0
+    
+    timeframes = np.zeros(n_obs, dtype=int)
+    current_frame = 0
+    obs_in_current_frame = 1
+    
+    for i in range(1, n_obs):
+        time_gap = times[i] - times[i-1]
+        
+        # Start new frame if gap exceeds threshold AND minimum obs requirement met
+        if time_gap >= gap_threshold_seconds and obs_in_current_frame >= min_obs_per_frame:
+            current_frame += 1
+            obs_in_current_frame = 1
+        else:
+            obs_in_current_frame += 1
+            
+        timeframes[i] = current_frame
+    
+    return timeframes
 

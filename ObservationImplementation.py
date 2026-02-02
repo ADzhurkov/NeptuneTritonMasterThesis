@@ -32,7 +32,7 @@ from tudatpy import numerical_simulation
 
 from tudatpy.astro import time_conversion, element_conversion,frame_conversion
 from tudatpy.astro.time_conversion import DateTime
-
+from tudatpy.estimation.observable_models_setup import links
 
 from tudatpy.data import save2txt
 
@@ -56,7 +56,18 @@ import nsdc
 
 matplotlib.use("PDF")  #tkagg
 
-def main(settings: dict,out_dir):
+def main(settings: dict,out_dir,
+        body_settings=None,
+        system_of_bodies=None,
+        observations=None,
+        observations_settings=None):
+    """
+    if settings['env']['use_created_env'] == True
+        body_settings,system_of_bodies are required
+    if settings['obs']['use_loaded_obs'] == True
+        observation: ObservationCollection is required
+        observations_settings: ObservationSettings is required 
+    """
     print("Running Main File...")
 
     ##############################################################################################
@@ -89,9 +100,10 @@ def main(settings: dict,out_dir):
     ##############################################################################################
     # CREATE ENVIRONMENT  
     ##############################################################################################
-
+    #if settings['env']['use_created_env'] == False:
     body_settings,system_of_bodies = PropFuncs.Create_Env(settings['env'])
-
+    # elif settings['env']['use_created_env'] == True:
+    #     body_settings,system_of_bodies = PropFuncs.Create_Env(settings['env'],observations)
 
     
     simulation_start_epoch = settings['env']["start_epoch"]
@@ -100,13 +112,13 @@ def main(settings: dict,out_dir):
     epochs = np.arange(simulation_start_epoch, simulation_end_epoch + step_size, step_size)
 
     # Get Neptune rotation model
-    nep_rot_model = system_of_bodies.get("Neptune").rotation_model
+    # nep_rot_model = system_of_bodies.get("Neptune").rotation_model
 
-    # Generate all rotation matrices at once
-    rotation_matrices = np.array([
-        nep_rot_model.body_fixed_to_inertial_rotation(epoch) 
-        for epoch in epochs
-    ])
+    # # Generate all rotation matrices at once
+    # rotation_matrices = np.array([
+    #     nep_rot_model.body_fixed_to_inertial_rotation(epoch) 
+    #     for epoch in epochs
+    # ])
 
     ##############################################################################################
     # CREATE ACCELERATION MODELS  
@@ -131,8 +143,40 @@ def main(settings: dict,out_dir):
         files = settings["obs"]["files"]
         observations_folder_path = settings["obs"]["observations_folder_path"]
         
-        if settings["obs"]["use_weights"] == True:
+        #If observations are already loaded and weights are assigned do not redo it.
+        if settings['obs']['use_loaded_obs'] == True and settings['obs']['use_old_obs_func'] == False:
+            #CREATE EARTH BASED STATIONS EARTH 
+            #---------------------------------------------------------------------------------------------------------------------------------------------------
+            if observations != None:
+                Observatories = []
+            
+                # Extract observation sets
+                sets = observations.sorted_observation_sets
+                ObservableType = list(sets.keys())[0]
+                
+                all_observations_sets = []
+                for observable_type, inner_dict in sets.items():
+                    for link_end_id, observation_list in inner_dict.items():
+                        all_observations_sets.extend(observation_list)
+                
+                for i in range(len(all_observations_sets)):
+                    # Get reference point ID for this set
+                    Observatories.append(all_observations_sets[i].link_definition.link_end_id(links.receiver).reference_point)
+                
 
+                for set_id in Observatories:
+                    # Define the position of the observatory on Earth
+                    observatory_longitude, observatory_latitude, observatory_altitude = ObsFunc.observatory_info(set_id.split("_")[0])
+
+                    # Add the ground station to the environment
+                    environment_setup.add_ground_station(
+                    system_of_bodies.get_body("Earth"),
+                    set_id,
+                    [observatory_altitude, observatory_latitude, observatory_longitude],
+                    element_conversion.geodetic_position_type)
+                #---------------------------------------------------------------------------------------------------------------------------------------------------
+        
+        elif settings['obs']['use_old_obs_func'] == True: 
             observations,observations_settings,observation_set_ids,epochs_rejected = ObsFunc.LoadObservations(
                         observations_folder_path,
                         system_of_bodies,
@@ -146,27 +190,45 @@ def main(settings: dict,out_dir):
                         per_night_weights_hybrid = settings["obs"]["per_night_weights_hybrid"],
                         Residual_filtering = settings["obs"]["residual_filtering"],
                         epoch_filter_dict = settings["obs"]["epoch_filter_dict"])
-        else:
+        elif settings["obs"]["use_loaded_obs"] == False and settings['obs']['use_old_obs_func'] == False:
+                
             observations,observations_settings,observation_set_ids, epochs_rejected = ObsFunc.LoadObservations(
-                        observations_folder_path,
-                        system_of_bodies,
-                        files,
-                        Residual_filtering = settings["obs"]["residual_filtering"])
+            observations_folder_path,
+            system_of_bodies,
+            files,
+            Residual_filtering = settings["obs"]["residual_filtering"])
 
-        #Always save the rejected epochs for analysis
-        #--------------------------------------------------------------
-        output_file = out_dir / "residuals_rejected_epochs.json"
 
-        with open(output_file, 'w') as f:
-            json.dump(epochs_rejected, f, indent=2)
-        #--------------------------------------------------------------
+            #Always save the rejected epochs for analysis
+            #--------------------------------------------------------------
+            output_file = out_dir / "residuals_rejected_epochs.json"
 
-        #observations,observations_settings,observation_set_ids = ObsFunc.LoadObservations("Observations/ProcessedOutliers/",system_of_bodies,files)
+            with open(output_file, 'w') as f:
+                json.dump(epochs_rejected, f, indent=2)
+            #------------------------------------------------
+
+    #else:
+
+
+
         Observatories = []
-        for id in observation_set_ids:
-            Observatory =  id.split("_")[0]
-            Observatories.append(Observatory)
-        print("observation_set_ids: ",observation_set_ids)
+
+            
+        # Extract observation sets
+        sets = observations.sorted_observation_sets
+        ObservableType = list(sets.keys())[0]
+        
+        all_observations_sets = []
+        for observable_type, inner_dict in sets.items():
+            for link_end_id, observation_list in inner_dict.items():
+                all_observations_sets.extend(observation_list)
+        
+        for i in range(len(all_observations_sets)):
+            # Get reference point ID for this set
+            Observatories.append(all_observations_sets[i].link_definition.link_end_id(links.receiver).reference_point)
+        
+
+
     else:
         print("No Observation type selected")
     ##############################################################################################
@@ -191,13 +253,13 @@ def main(settings: dict,out_dir):
     # RETRIEVE INFO
     ##############################################################################################
 
-    state_history = estimation_output.simulation_results_per_iteration[estimation_output.best_iteration].dynamics_results.state_history_float
+    state_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.state_history_float
     state_history_array = util.result2array(state_history)
 
     state_history_initial = estimation_output.simulation_results_per_iteration[0].dynamics_results.state_history_float
     state_history_initial_array = util.result2array(state_history_initial)
 
-    dep_vars_history = estimation_output.simulation_results_per_iteration[estimation_output.best_iteration].dynamics_results.dependent_variable_history
+    dep_vars_history = estimation_output.simulation_results_per_iteration[-1].dynamics_results.dependent_variable_history
     dep_vars_array = util.result2array(dep_vars_history)
 
     #Get all results
@@ -349,8 +411,6 @@ def main(settings: dict,out_dir):
         arr3 = np.stack(states_SPICE_with_time, axis=0)
         np.save(out_dir / "states_SPICE_with_time.npy", arr3)
 
-        arr4 = np.stack(observation_set_ids, axis=0)
-        np.save(out_dir / "observation_set_ids.npy", arr4)
 
 
         #save formal errors, covariance, initial state and estimated state
@@ -505,13 +565,13 @@ def main(settings: dict,out_dir):
     settings['obs'].pop('weights', None)
 
     #Convert initial state to this
-    if 'initial_state' in settings['prop']:
+    if 'initial_state' in settings['prop'] and np.shape(settings['prop']['initial_state']) != ():
         settings['prop']['initial_state'] = settings['prop']['initial_state'].tolist()
     #Save yaml settings file
     with open(out_dir / "settings.yaml", "w", encoding="utf-8") as f:
         yaml.safe_dump(settings, f, sort_keys=False, allow_unicode=True)
 
-    return estimation_output,observations
+    return estimation_output,observations,observations_settings,body_settings,system_of_bodies 
 #---------------------------------------------------------------------------------------------------
 
 def make_timestamped_folder(base_path="Results"):
