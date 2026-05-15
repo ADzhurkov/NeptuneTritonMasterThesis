@@ -21,6 +21,9 @@ SIM_LABELS    = ['initial propagation']
 
 OUTPUT_DIR = 'ThesisFigures'
 
+# ── Path to obs_analysis_data.npy (produced by Test_Observations.py) ─────────
+OBS_ANALYSIS_DATA = 'Results/ObservationsAnalysis/obs_analysis_data.npy'
+
 # ── Paths to observation files ────────────────────────────────────────────────
 # Folder containing the processed CSVs (Triton_<code>_<nmXXXX>.csv).
 # Each file must have 5 columns: time, RA, Dec, O-C RA, O-C Dec.
@@ -46,45 +49,74 @@ OBS_TYPES_OVERRIDE = {}
 # Passed to generate_obs_dataset_table() via main().
 # Remove or set to None to skip table generation.
 OBS_DATASET_TABLE = {
-    'obs_folder':     OBS_FOLDER,
-    'raw_obs_folder': RAW_OBS_FOLDERS,   # list — searched in order
-    'obs_types':      OBS_TYPES_OVERRIDE,
-    'sim_for_initial': _SIM_INITIAL,
+    'obs_folder':      OBS_FOLDER,
+    'raw_obs_folder':  RAW_OBS_FOLDERS,   # list — searched in order
+    'obs_types':       OBS_TYPES_OVERRIDE,
+    'file_names_json': 'file_names.json', # restrict table to these datasets only
     # Caption and label for the LaTeX table.
     'caption': (
         r'Summary of astrometric observation datasets used in this work. '
-        r'$N$ is the number of observations per dataset. '
-        r'Type indicates whether the original data are relative (Rel.) or absolute (Abs.) '
-        r'observations. '
-        r'RMS$_{\mathrm{RA}}^{\mathrm{NEP097}}$ and RMS$_{\mathrm{Dec}}^{\mathrm{NEP097}}$ '
-        r'are the root-mean-square residuals against the NEP097 ephemeris. '
-        r'RMS$_{\mathrm{RA}}^{\mathrm{init}}$ and RMS$_{\mathrm{Dec}}^{\mathrm{init}}$ '
-        r'are the residuals against the initial propagation before estimation.'
+        r'NSDC Listing gives the dataset identifier in the Natural Satellites '
+        r'Data Centre archive. '
+        r'MPC Code is the three-digit Minor Planet Center observatory code. '
+        r'$N_{\mathrm{obs}}$ is the total number of astrometric observations. '
+        r'Obs.\ Type indicates whether the original measurements are relative '
+        r'(Rel.) or absolute (Abs.) astrometry. '
+        r'RMS O$-$C RA and RMS O$-$C Dec are the root-mean-square observed '
+        r'minus computed residuals in right ascension and declination, '
+        r'respectively, evaluated against the NEP097 ephemeris [$^{\prime\prime}$].'
     ),
     'label': 'tab:obs-dataset-summary',
 }
 
 # ── Figures to export ─────────────────────────────────────────────────────────
 FIGURES_TO_EXPORT = [
-    # ── Residual time series vs NEP097 ────────────────────────────────────────
-    ('obs_spice_timeseries', {
-        'obs_folder': OBS_FOLDER,
-        'title':      r'O$-$C Residuals vs NEP097',
+    # 1. All files in folder: excluded (not in file_names.json) = red, included = blue
+    ('obs_analysis_all_in_folder', {
+        'data_path': OBS_ANALYSIS_DATA,
+        'title':     r'O$-$C Residuals vs NEP097 — All Files in Folder',
     }),
-    # ── Residual time series vs initial propagation ───────────────────────────
-    ('obs_initial_timeseries', {
-        'sim_name': _SIM_INITIAL,
-        'title':    'Residuals vs Initial Propagation',
+    # 2. Included files coloured by obs-file ID; legend as right-panel (2 col)
+    ('obs_analysis_spice_by_id', {
+        'data_path': OBS_ANALYSIS_DATA,
+        'title':     r'O$-$C Residuals vs NEP097 — Included Files by ID',
     }),
-    # ── Per-ID residual histograms (both SPICE and initial propagation) ────────
-    # Returns one figure per observation ID → saved as separate PDF files.
-    ('obs_histogram_per_id', {
-        'sim_name':   _SIM_INITIAL,
-        'obs_folder': OBS_FOLDER,
-        'source':     'both',    # 'spice', 'initial', or 'both'
-        'bins':       30,
-        'fit_gauss':  True,
-        'title':      'Residual Histograms',
+    # 2b. Same but accepted observations only (no rejected markers)
+    ('obs_analysis_spice_by_id_accepted', {
+        'data_path': OBS_ANALYSIS_DATA,
+        'title':     r'O$-$C Residuals vs NEP097 — Accepted Observations by ID',
+    }),
+    # 2c. Propagation residuals coloured by ID
+    ('obs_analysis_prop_by_id', {
+        'data_path': OBS_ANALYSIS_DATA,
+        'title':     r'O$-$C Residuals vs Numerical Propagation — Included Files by ID',
+    }),
+    # 2d. Bias-corrected SPICE residuals coloured by ID
+    ('obs_analysis_spice_biased_by_id', {
+        'data_path': OBS_ANALYSIS_DATA,
+        'title':     r'O$-$C Residuals vs NEP097 — Bias-Corrected by ID',
+    }),
+    # 2e. Overlay: unbiased (faded) vs bias-corrected (solid), same per-ID colours
+    ('obs_analysis_spice_bias_overlay', {
+        'data_path': OBS_ANALYSIS_DATA,
+        'title':     r'O$-$C Residuals vs NEP097 — Bias Correction Overlay',
+    }),
+    # 3. Included files: accepted = blue, rejected = red (no per-ID colouring)
+    ('obs_analysis_spice_filtered_highlight', {
+        'data_path': OBS_ANALYSIS_DATA,
+        'title':     r'O$-$C Residuals vs NEP097 — Accepted / Rejected',
+    }),
+    # 4. Combined count figure: stacked-by-file bar per year + bar per file
+    ('obs_analysis_combined_count', {
+        'data_path': OBS_ANALYSIS_DATA,
+        'bin_years': 1,
+        'title':     'Observation Count',
+    }),
+    # 5. Per-file RA/Dec residual figures — each saved as a separate PDF in a subfolder
+    ('obs_analysis_spice_per_file', {
+        'data_path':    OBS_ANALYSIS_DATA,
+        'title_prefix': r'O$-$C Residuals vs NEP097',
+        'subfolder':    'per_file',
     }),
 ]
 

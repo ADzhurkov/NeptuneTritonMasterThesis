@@ -74,8 +74,8 @@ def Create_Env(settings_dict):
     target_frame_spice = "IAU_Neptune" # is this correct?
    
 
-# SELECT ROTATION MODEL NEPTUNE
-#---------------------------------------------------------------------------------------------------------------------------------------------------   
+    # SELECT ROTATION MODEL NEPTUNE
+    #---------------------------------------------------------------------------------------------------------------------------------------------------   
     # create rotation model settings and assign to body settings of "Neptune"
     if settings_dict['Neptune_rot_model_type'] == 'simple_from_spice':
         body_settings.get( "Neptune" ).rotation_model_settings = environment_setup.rotation_model.simple_from_spice(
@@ -477,7 +477,7 @@ def Create_Estimation_Output(settings,system_of_bodies,propagator_settings,pseud
         pseudo_observations_settings,
         propagator_settings)
 
-    convergence_settings = estimation_analysis.estimation_convergence_checker(maximum_iterations=5)
+    convergence_settings = estimation_analysis.estimation_convergence_checker(maximum_iterations=10)
 
     
     ############################################################################################################
@@ -488,24 +488,39 @@ def Create_Estimation_Output(settings,system_of_bodies,propagator_settings,pseud
         # Get parameter indices
         n_params = parameters_to_estimate.parameter_set_size
         # Parameter identifies IAU (pole/lib are not working yet 
-        parameter_identifies = parameters_to_estimate.get_parameter_identifiers()
-        pole_pos_identifier = parameter_identifies[0]
-        pole_lib_identifier = parameter_identifies[1]
         
+        est_params_list = settings['est']['est_parameters']
+
+        # Find start index of each parameter block
+        # initial_state is always first (6 params)
+        initial_state_size = 6
+        pole_pos_start = initial_state_size if 'iau_rotation_model_pole' in est_params_list else None
+        pole_lib_start = None
+
+        if 'iau_rotation_model_pole' in est_params_list:
+            pole_pos_start = initial_state_size
+            if 'iau_rotation_model_pole_librations' in est_params_list:
+                pole_lib_start = pole_pos_start + 2  # pole position is always 2 params
+        elif 'iau_rotation_model_pole_librations' in est_params_list:
+            pole_lib_start = initial_state_size
+
+
+
+
         # Create inverse a priori covariance with zeros (no constraint by default)
         inverse_apriori_cov = np.zeros((n_params, n_params))
         
         # Get indices for pole position and librations (rotation model parameters)
-        if settings['est']['a_priori_pole'] == True:
+        if settings['est']['a_priori_pole'] == True and pole_pos_start is not None: 
             pole_indices = parameters_to_estimate.indices_for_parameter_type(pole_pos_identifier)
             # Apply constraints to pole position
             # Example: uncertainty in pole right ascension and declination
-            for idx_range in pole_indices:
+            for i in range(pole_pos_start, pole_pos_start + 2):
                 for i in range(idx_range[0], idx_range[0]+idx_range[1]):
                     inverse_apriori_cov[i, i] = 1 / (0.2 * np.pi/180)**2  # Inverse of 0.2 degree uncertainty
         
-        if settings['est']['a_priori_lib'] == True:
-            libration_indices = parameters_to_estimate.indices_for_parameter_type(pole_lib_identifier)
+        if settings['est']['a_priori_lib'] == True and pole_lib_start is not None:
+            #libration_indices = parameters_to_estimate.indices_for_parameter_type(pole_lib_identifier)
             
             if settings['est']['a_priori_lib_deg'] == 1:
                 # Apply constraints to libration amplitudes
@@ -521,11 +536,10 @@ def Create_Estimation_Output(settings,system_of_bodies,propagator_settings,pseud
                 libration_sigmas[2] = np.abs(4.2e-5*1)   # alpha_2 ~100% of 4.2e-5 rad
                 libration_sigmas[3] = np.abs(4.2e-5*1)   # delta_2 ~100% of 1.5e-5 rad 
             
-            for idx_range in libration_indices:
-                for j, i in enumerate(range(idx_range[0], idx_range[0]+idx_range[1])):
-                    param_idx = j % 2  # Cycles through 0,1,2,3 if multiple sets
-                    inverse_apriori_cov[i, i] = 1 / libration_sigmas[param_idx]**2        
-    ############################################################################################################
+
+            for j, i in enumerate(range(pole_lib_start, pole_lib_start + len(libration_sigmas))):
+                inverse_apriori_cov[i, i] = 1 / libration_sigmas[j]**2  
+   ############################################################################################################
     # Create input object for the estimation
     estimation_input = estimation_analysis.EstimationInput(
         observations_and_times=pseudo_observations,
@@ -534,7 +548,7 @@ def Create_Estimation_Output(settings,system_of_bodies,propagator_settings,pseud
 
     # Set methodological options
     estimation_input.define_estimation_settings(save_state_history_per_iteration=True)
-
+ 
     # Perform the estimation
     print('Performing the estimation...')
     print(f'Original initial states: {original_parameter_vector}')

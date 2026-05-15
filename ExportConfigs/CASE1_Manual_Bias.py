@@ -62,6 +62,7 @@ SIM_LABELS = [
 ]
 
 OUTPUT_DIR = 'ThesisFigures'
+SUPPRESS_TITLES = True
 
 # ─── Named subsets for reuse across figure entries ────────────────────────────
 _PROMINENT = [
@@ -69,6 +70,14 @@ _PROMINENT = [
     'IAUPole_pole_pos_cov_pole_lib_cov',
     'SimPole_pole_lib_cov',
     'SimPole_pole_pos_cov_pole_lib_cov',
+]
+
+# Key result sims: state (IAU), state (Fit.) side-by-side, then state+lib. pair
+_KEY_SIMS = [
+    'IAUPole_initial_state',
+    'SimPole_initial_state',
+    'IAUPole_pole_lib_cov',
+    'SimPole_pole_lib_cov',
 ]
 
 FIGURES_TO_EXPORT = [
@@ -153,6 +162,14 @@ FIGURES_TO_EXPORT = [
         'show_formal': True,
         'fontsize_scale': 1.3,
         'title': 'RSW Formal Errors — Prominent Solutions',
+    }),
+    # Combined 3×3 grid: rows = RMS diff / Formal σ RMS / Ratio, cols = R/S/W
+    ('rsw_rms_ratio_grid', {
+        'subfolder':      '02_rsw_stats',
+        'fig_label':      'rms_formal_ratio_grid',
+        'use_group_colors': True,
+        'fontsize_scale': 1.2,
+        'title':          'RSW RMS Diff, Formal Error RMS and Ratio — All Simulations',
     }),
 
     # ════════════════════════════════════════════════════════════════════
@@ -271,6 +288,32 @@ FIGURES_TO_EXPORT = [
         'title':     '|Correlations| — State + pos. + lib. (IAU 2015)',
         'cmap':      'YlOrRd',
     }),
+    # FitPole (SimPole) correlation heatmaps
+    ('corr_heatmap', {
+        'subfolder': '07_correlations',
+        'fig_label': 'SimPole_initial_state',
+        'sim_name':  'SimPole_initial_state',
+        'title':     '|Correlations| — State Only (Fit.)',
+        'cmap':      'YlOrRd',
+    }),
+    ('corr_heatmap', {
+        'subfolder': '07_correlations',
+        'fig_label': 'SimPole_pole_lib_cov',
+        'sim_name':  'SimPole_pole_lib_cov',
+        'title':     '|Correlations| — State + lib. (Fit.)',
+        'cmap':      'YlOrRd',
+    }),
+    ('corr_heatmap', {
+        'subfolder': '07_correlations',
+        'fig_label': 'SimPole_pole_pos_cov_pole_lib_cov',
+        'sim_name':  'SimPole_pole_pos_cov_pole_lib_cov',
+        'title':     '|Correlations| — State + pos. + lib. (Fit.)',
+        'cmap':      'YlOrRd',
+    }),
+    # Condition numbers of all correlation matrices — written to a text file.
+    ('condition_numbers_txt', {
+        'subfolder': '07_correlations',
+    }),
 
     # ════════════════════════════════════════════════════════════════════
     # 08  Parameter updates
@@ -320,13 +363,181 @@ FIGURES_TO_EXPORT = [
         'sim_subset': ['SimPole_pole_lib_cov'],
         'title':      'Formal Errors RSW \u2014 state+lib. (Fit.)',
     }),
+    # RSW diff with ±1σ formal error shading (cloud)
+    ('rsw_with_formal_cloud', {
+        'subfolder':  'FinalEstimation',
+        'fig_label':  'rsw_formal_cloud',
+        'sim_subset': ['SimPole_pole_lib_cov'],
+        'title':      'RSW Difference vs NEP097 with \u00b11\u03c3 Formal Error \u2014 state+lib. (Fit.)',
+    }),
+    # RSW diff and formal error as separate colored lines
+    ('rsw_and_formal_lines', {
+        'subfolder':  'FinalEstimation',
+        'fig_label':  'rsw_formal_lines',
+        'sim_subset': ['SimPole_pole_lib_cov'],
+        'title':      'RSW Difference vs NEP097 and Formal Errors \u2014 state+lib. (Fit.)',
+    }),
     ('residual_timeseries', {
         'subfolder':  'FinalEstimation',
         'fig_label':  'residuals',
         'sim_subset': ['SimPole_pole_lib_cov'],
         'title':      'Observation Residuals RA/DEC \u2014 state+lib. (Fit.)',
     }),
+
+    # ════════════════════════════════════════════════════════════════════
+    # RSW diff comparisons: IAU vs Fit. side-by-side
+    # ════════════════════════════════════════════════════════════════════
+    ('rsw_with_zoom', {
+        'subfolder': 'RSWDiffTimeseries/Comparison',
+        'fig_label': 'state_iau_vs_fit',
+        'sim_subset': ['IAUPole_initial_state', 'SimPole_initial_state'],
+        'title': 'RSW Difference vs NEP097 \u2014 state (IAU) vs state (Fit.)',
+    }),
+    ('rsw_with_zoom', {
+        'subfolder': 'RSWDiffTimeseries/Comparison',
+        'fig_label': 'lib_iau_vs_fit',
+        'sim_subset': ['IAUPole_pole_lib_cov', 'SimPole_pole_lib_cov'],
+        'title': 'RSW Difference vs NEP097 \u2014 state+lib. (IAU) vs state+lib. (Fit.)',
+    }),
+
+    # Initial (nominal) vs final (estimated) for state sims
+    ('rsw_initial_vs_final', {
+        'subfolder': 'RSWDiffTimeseries/Comparison',
+        'fig_label': 'state_iau_initial_vs_final',
+        'sim_subset': ['IAUPole_initial_state'],
+        'title': 'RSW Difference vs NEP097 \u2014 IAU nominal vs state',
+    }),
+    ('rsw_initial_vs_final', {
+        'subfolder': 'RSWDiffTimeseries/Comparison',
+        'fig_label': 'state_fit_initial_vs_final',
+        'sim_subset': ['SimPole_initial_state'],
+        'title': 'RSW Difference vs NEP097 \u2014 FitPole nominal vs state (Fit.)',
+    }),
+    # Initial (nominal) vs final (estimated) for state+lib. sims
+    ('rsw_initial_vs_final', {
+        'subfolder': 'RSWDiffTimeseries/Comparison',
+        'fig_label': 'lib_iau_initial_vs_final',
+        'sim_subset': ['IAUPole_pole_lib_cov'],
+        'title': 'RSW Difference vs NEP097 \u2014 IAU nominal vs state+lib.',
+    }),
+    ('rsw_initial_vs_final', {
+        'subfolder': 'RSWDiffTimeseries/Comparison',
+        'fig_label': 'lib_fit_initial_vs_final',
+        'sim_subset': ['SimPole_pole_lib_cov'],
+        'title': 'RSW Difference vs NEP097 \u2014 FitPole nominal vs state+lib. (Fit.)',
+    }),
+
+    # ════════════════════════════════════════════════════════════════════
+    # Formal errors comparisons: IAU vs Fit. side-by-side
+    # ════════════════════════════════════════════════════════════════════
+    ('formal_with_zoom', {
+        'subfolder': 'FormalTimeseries/Comparison',
+        'fig_label': 'state_iau_vs_fit',
+        'sim_subset': ['IAUPole_initial_state', 'SimPole_initial_state'],
+        'title': 'Formal Errors RSW \u2014 state (IAU) vs state (Fit.)',
+    }),
+    ('formal_with_zoom', {
+        'subfolder': 'FormalTimeseries/Comparison',
+        'fig_label': 'lib_iau_vs_fit',
+        'sim_subset': ['IAUPole_pole_lib_cov', 'SimPole_pole_lib_cov'],
+        'title': 'Formal Errors RSW \u2014 state+lib. (IAU) vs state+lib. (Fit.)',
+    }),
+
+    # ════════════════════════════════════════════════════════════════════
+    # PoleMovement — Neptune pole trajectory for all / key estimations
+    # ════════════════════════════════════════════════════════════════════
+    # All simulations: full trajectory (RA, Dec vs time)
+    ('pole_model', {
+        'subfolder': 'PoleMovement',
+        'fig_label': 'all_sims',
+        'title':     'Neptune Pole Trajectory \u2014 All Estimations',
+    }),
+    # All simulations: deviation from nominal (Δα, Δδ vs time)
+    ('pole_model_diff', {
+        'subfolder': 'PoleMovement',
+        'fig_label': 'all_sims_diff',
+        'title':     'Neptune Pole Deviation from Nominal \u2014 All Estimations',
+    }),
+    # Key sims: baseline IAUPole + FitPole (from state sims) and state+lib. pair
+    ('pole_model', {
+        'subfolder': 'PoleMovement',
+        'fig_label': 'key_sims',
+        'sim_subset': _KEY_SIMS,
+        'title':     'Neptune Pole Trajectory \u2014 Baseline and state+lib. Estimations',
+    }),
+    # Key sims deviation from nominal
+    ('pole_model_diff', {
+        'subfolder': 'PoleMovement',
+        'fig_label': 'key_sims_diff',
+        'sim_subset': _KEY_SIMS,
+        'title':     'Neptune Pole Deviation from Nominal \u2014 Baseline and state+lib. Estimations',
+    }),
+
+    # ════════════════════════════════════════════════════════════════════
+    # Residuals  — one figure per estimation (arcsec, legend on right)
+    # ════════════════════════════════════════════════════════════════════
+    ('residual_timeseries_by_id', {
+        'subfolder': 'residuals',
+        'title':     'Observation Residuals RA/Dec',
+    }),
+
+    # ════════════════════════════════════════════════════════════════════
+    # Residual histograms  — one figure per estimation
+    # ════════════════════════════════════════════════════════════════════
+    ('residual_histogram_per_sim', {
+        'subfolder': 'residuals',
+        'fig_label': 'histogram',
+        'title':     'Residual Histogram',
+        'fit_gauss': True,
+    }),
+
+    # ════════════════════════════════════════════════════════════════════
+    # 08_params/KeyResults  — state, state+lib. (IAU), state+lib. (Fit.)
+    # ════════════════════════════════════════════════════════════════════
+    ('param_state', {
+        'subfolder':  '08_params/KeyResults',
+        'fig_label':  'total_pos_vel',
+        'variant':    'combined',
+        'sim_subset': _KEY_SIMS,
+        'show_annot': False,
+        'title':      'Initial State Update — Total Magnitude',
+    }),
+    ('param_rsw', {
+        'subfolder':  '08_params/KeyResults',
+        'fig_label':  'rsw_pos_vel',
+        'variant':    'combined',
+        'sim_subset': _KEY_SIMS,
+        'show_annot': False,
+        'title':      'Initial State Update — RSW',
+    }),
+    ('param_pole_lib', {
+        'subfolder':  '08_params/KeyResults',
+        'fig_label':  'pole_lib',
+        'variant':    'combined',
+        'sim_subset': _KEY_SIMS,
+        'show_annot': False,
+        'title':      r'Pole Libration Update  (\u03b1\u2081, \u03b4\u2081)',
+    }),
 ]
+
+# ─── Parameter formal errors table ───────────────────────────────────────────
+# Generates: FinalEstimation/table_param_formal.tex
+# Lists all estimated parameters for SimPole_pole_lib_cov with formal errors
+# (1σ from the post-fit covariance diagonal), alongside IAU₀ and FP₀ references.
+PARAM_FORMAL_TABLE = {
+    'sim_name':  'SimPole_pole_lib_cov',
+    'subfolder': 'FinalEstimation',
+}
+
+# ─── Observation residuals table ─────────────────────────────────────────────
+# Generates: FinalEstimation/table_obs_residuals.tex
+# Per-dataset RMS O-C residuals (RA and Dec in arcsec) from the final estimation.
+OBS_RESIDUALS_TABLE = {
+    'sim_name':       'SimPole_pole_lib_cov',
+    'subfolder':      'FinalEstimation',
+    'raw_obs_folder': 'Observations/RawRelativeObservations',
+    'label':          'tab:obs-residuals-final',
+}
 
 # ─── Final estimation tables config ─────────────────────────────────────────
 # Triggers generate_final_estimation_tables() for IAU-baseline and Fit-baseline
@@ -346,6 +557,19 @@ POLE_TABLE_SIMS = [
     'IAUPole_pole_lib_cov',
     'IAUPole_pole_pos_cov_pole_lib_cov',
 ]
+
+# Key results table: parameter differences vs IAU and FitPole references for 3 sims.
+# Output: 08_params/KeyResults/key_results_params.tex
+KEY_RESULTS_CONFIG = {
+    'subfolder': '08_params/KeyResults',
+    'key_sims':  _KEY_SIMS,
+    'caption':   (r'Key parameter estimates for selected simulations. '
+                  r'IAU$_0$ and FP$_0$ are the initial values for the IAU 2015 '
+                  r'and NEP097-fitted pole models, respectively. '
+                  r'$\Delta_\mathrm{IAU} = \mathrm{Est.} - \mathrm{IAU}_0$; '
+                  r'$\Delta_\mathrm{FP}  = \mathrm{Est.} - \mathrm{FP}_0$.'),
+    'label':     'tab:key-results',
+}
 
 # ─── Human-readable descriptions for the naming-convention LaTeX table ────────
 SIM_DESCRIPTIONS = {

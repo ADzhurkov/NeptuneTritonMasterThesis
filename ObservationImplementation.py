@@ -281,7 +281,8 @@ def main(settings: dict,out_dir,
 
     #Get all results
     arrays = []
-    for i in range(5):
+    #for i in range(5):
+    for i in range(len(estimation_output.simulation_results_per_iteration)):
         state_history_current = (
             estimation_output.simulation_results_per_iteration[i]
             .dynamics_results.state_history_float

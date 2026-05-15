@@ -344,7 +344,7 @@ def build_residual_df(simulations, sim_name):
 DATA_FILES = [
     ('SimObs', 'Results/EstimatedParametersSimulatedObservations/NewFinal/Analysis/simulations.pkl'),
     #('WeightAnalysis_Old', 'Results/EstimationTemplatesTest/WeightScheme/Analysis/simulations.pkl'),
-    #('WeightAnalysis', 'Results/EstimationTemplatesTest/WeightScheme_New/Analysis/simulations.pkl'),
+    ('WeightAnalysis', 'Results/EstimationTemplatesTest/WeightScheme_New/Analysis/simulations.pkl'),
     #('WeightAnalysis_Pole', 'Results/EstimationTemplatesTest/WeightScheme_Pole_lib/Analysis/simulations.pkl'),
     #('UltimateCASE1', 'Results/PoleEstimationRealObservations/UltimateCASE1/Analysis/simulations_with_weights.pkl'),
     #('PoleEst_MB_old', 'Results/ManualBias/CASE1_Manual_Bias/Analysis/simulations.pkl'),
@@ -352,6 +352,19 @@ DATA_FILES = [
     # ('PoleInitCASE2', 'Results/PoleEstimationRealObservations/PoleInitCASE2/Analysis/simulations_with_weights.pkl'),
     #('WeightLoop', 'Results/EstimationTemplatesTest/Weight_Loop/Analysis/simulations.pkl'),
 ]
+
+# ── Memory-saving filter for headless export runs ─────────────────────────────
+# Set EXPORT_DATASETS=label1,label2,... to load ONLY those datasets here.
+# Leaves the Dash app's interactive flow untouched (env var simply unset).
+import os as _os_filter
+_export_datasets_env = _os_filter.environ.get('EXPORT_DATASETS')
+if _export_datasets_env:
+    _wanted = {x.strip() for x in _export_datasets_env.split(',') if x.strip()}
+    _filtered = [(lbl, p) for (lbl, p) in DATA_FILES if lbl in _wanted]
+    _skipped  = [lbl for (lbl, _) in DATA_FILES if lbl not in _wanted]
+    print(f"[EXPORT_DATASETS={_export_datasets_env}] loading "
+          f"{[l for l,_ in _filtered]}, skipping {_skipped}")
+    DATA_FILES = _filtered
 
 all_datasets = {}
 
@@ -372,7 +385,35 @@ for dataset_label, file_path in DATA_FILES:
         print(f"WARNING: File not found: {file_path} — skipping '{dataset_label}'")
         continue
 
-    for sim_name in sims.keys():
+    # ── Optional sim-name filter (memory-saving for headless export runs) ─────
+    # Set EXPORT_SIMS_FILTER=label1:simA,simB|label2:simC to keep only those
+    # sims per dataset.  Or EXPORT_SIMS_FILTER=simA,simB to apply the same
+    # filter to every dataset.  Substring match — 'pole_lib' keeps any sim
+    # whose name contains 'pole_lib'.
+    _sims_filter_env = _os_filter.environ.get('EXPORT_SIMS_FILTER')
+    if _sims_filter_env:
+        _per_ds = {}
+        _global_tokens = []
+        for chunk in _sims_filter_env.split('|'):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            if ':' in chunk:
+                lbl, toks = chunk.split(':', 1)
+                _per_ds[lbl.strip()] = [t.strip() for t in toks.split(',') if t.strip()]
+            else:
+                _global_tokens.extend(t.strip() for t in chunk.split(',') if t.strip())
+        tokens = _per_ds.get(dataset_label, _global_tokens)
+        if tokens:
+            keep = [n for n in sims.keys() if any(tok in n for tok in tokens)]
+            drop = [n for n in sims.keys() if n not in keep]
+            for n in drop:
+                del sims[n]
+            print(f"  [EXPORT_SIMS_FILTER] dataset={dataset_label!r}: kept "
+                  f"{len(keep)}/{len(keep)+len(drop)} sims "
+                  f"(filter={tokens})")
+
+    for sim_name in list(sims.keys()):
         if 'weight_info' in sims[sim_name]:
             sims[sim_name]['weight_info'] = process_weight_info(sims[sim_name]['weight_info'])
 

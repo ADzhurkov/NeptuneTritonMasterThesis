@@ -251,180 +251,335 @@ settings['env']['Neptune_rot_model_type'] = 'IAU2015'
 # Common settings — per-variant overrides applied in the loop below
 settings['est']['a_priori_pole'] = False
 
-# ---- Create environment and load observations ----
+# ---- Create SPICE environment ----
 body_settings, system_of_bodies = PropFuncs.Create_Env(settings['env'])
 
-observations, observations_settings, observation_set_ids, epochs_rejected = ObsFunc.LoadObservations(
-        settings["obs"]["observations_folder_path"],
-        system_of_bodies,
-        settings['obs']["files"],
-        Residual_filtering=settings["obs"]["residual_filtering"])
-
-
-
-##############################################################################################
-# INVESTIGATION: residuals per file — SPICE (nep097) vs tudatpy, accepted vs rejected
-##############################################################################################
-
 from tudatpy.estimation import observations_setup as tud_obs_setup
-from matplotlib.backends.backend_pdf import PdfPages
+from tudatpy.numerical_simulation import environment_setup as _num_env
+from RunSinglePropagation import RunSinglePropagation as _run_propagation
 
 arcsec_to_rad = np.pi / (180.0 * 3600.0)
 j2000_epoch   = dt.datetime(2000, 1, 1, 12)
 
-# ---- Load all files UNFILTERED ----
+out_dir_obs = Path("Results/ObservationsAnalysis")
+out_dir_obs.mkdir(parents=True, exist_ok=True)
+(out_dir_obs / "per_file").mkdir(parents=True, exist_ok=True)
+
+##############################################################################################
+# STEP 1 — RUN PROPAGATION (before any observation loading)
+##############################################################################################
+
+print("\nRunning numerical propagation...")
+state_history_prop, state_history_array_prop = _run_propagation(
+    settings, out_dir_obs, load_kernels=False
+)
+
+# Build propagated environment: same as SPICE env but Triton uses tabulated ephemeris
+body_settings_prop, _ = PropFuncs.Create_Env(settings['env'])
+body_settings_prop.get("Triton").ephemeris_settings = _num_env.ephemeris.tabulated(
+    state_history_prop, global_frame_origin, global_frame_orientation
+)
+system_of_bodies_prop = _num_env.create_system_of_bodies(body_settings_prop)
+
+##############################################################################################
+# STEP 2 — LOAD OBSERVATIONS INTO BOTH ENVIRONMENTS
+# LoadObservations registers ground stations on system_of_bodies as a side effect.
+# Each system_of_bodies needs its own LoadObservations call.
+##############################################################################################
+
+print("\nLoading observations (unfiltered) into SPICE environment...")
 obs_unfiltered, obs_settings_all, set_ids_all, _ = ObsFunc.LoadObservations(
     settings["obs"]["observations_folder_path"],
     system_of_bodies,
     file_names_loaded,
-    Residual_filtering=False,
-    epoch_filter_dict=None
+    Residual_filtering=False, epoch_filter_dict=None
 )
 
-# ---- Load all files FILTERED — only to get rejected epochs ----
-_, _, _, epochs_rej_filtered = ObsFunc.LoadObservations(
+print("Loading observations (unfiltered) into propagated environment...")
+obs_unfiltered_prop, obs_settings_prop_all, set_ids_prop, _ = ObsFunc.LoadObservations(
+    settings["obs"]["observations_folder_path"],
+    system_of_bodies_prop,
+    file_names_loaded,
+    Residual_filtering=False, epoch_filter_dict=None
+)
+
+print("Loading observations (filtered) — authoritative source for accepted/rejected epochs...")
+obs_filtered, obs_settings_filt, set_ids_filt, epochs_rej_filtered = ObsFunc.LoadObservations(
     settings["obs"]["observations_folder_path"],
     system_of_bodies,
     file_names_loaded,
-    Residual_filtering=True,
-    epoch_filter_dict=None
+    Residual_filtering=True, epoch_filter_dict=None
 )
 
-# ---- Compute tudatpy residuals on the unfiltered collection ----
-obs_simulators = tud_obs_setup.observations_simulation_settings.create_observation_simulators(
+##############################################################################################
+# STEP 3 — CROSS-CHECKS
+##############################################################################################
+
+assert set_ids_all == set_ids_prop, \
+    f"set_ids mismatch: SPICE unfiltered vs prop unfiltered\n  {set_ids_all}\n  {set_ids_prop}"
+assert set_ids_all == set_ids_filt, \
+    f"set_ids mismatch: SPICE unfiltered vs SPICE filtered\n  {set_ids_all}\n  {set_ids_filt}"
+print(f"\nCross-check PASSED: set_ids consistent across all 3 loads ({len(set_ids_all)} sets)")
+
+obs_times_unfiltered = obs_unfiltered.get_observation_times()
+obs_times_prop       = obs_unfiltered_prop.get_observation_times()
+obs_times_filtered   = obs_filtered.get_observation_times()
+
+obs_counts  = [len(obs_times_unfiltered[j]) for j in range(len(set_ids_all))]
+set_offsets = np.cumsum([0] + obs_counts)
+
+# Derive rejected epochs from obs collections (more reliable than the dict)
+# and cross-check against epochs_rej_filtered dict
+rejected_epochs_per_set = {}   # authoritative, derived from obs_unfiltered vs obs_filtered
+all_checks_passed = True
+
+print("\nCross-checking per-set epoch counts...")
+for j, set_id in enumerate(set_ids_all):
+    unf_set  = set(float(t) for t in obs_times_unfiltered[j])
+    prop_set = set(float(t) for t in obs_times_prop[j])
+    filt_set = set(float(t) for t in obs_times_filtered[j])
+    rej_obs  = unf_set - filt_set           # derived from obs collections
+    rej_dict = set(float(t) for t in epochs_rej_filtered.get(set_id, []))
+
+    rejected_epochs_per_set[set_id] = rej_obs
+
+    ok = True
+    if unf_set != prop_set:
+        print(f"  FAIL [{set_id}]: SPICE unfiltered epochs != prop unfiltered epochs "
+              f"({len(unf_set)} vs {len(prop_set)})")
+        ok = False
+    if filt_set - unf_set:
+        print(f"  FAIL [{set_id}]: {len(filt_set - unf_set)} filtered epochs not present in unfiltered")
+        ok = False
+    if len(unf_set) != len(filt_set) + len(rej_obs):
+        print(f"  FAIL [{set_id}]: unfiltered({len(unf_set)}) != "
+              f"filtered({len(filt_set)}) + rejected({len(rej_obs)})")
+        ok = False
+    if rej_obs != rej_dict:
+        print(f"  WARN [{set_id}]: epochs_rej_filtered dict ({len(rej_dict)} epochs) "
+              f"differs from obs-derived rejection ({len(rej_obs)} epochs)")
+        ok = False
+
+    status = "OK  " if ok else "FAIL"
+    print(f"  {status} [{set_id}]: total={len(unf_set)}  "
+          f"accepted={len(filt_set)}  rejected={len(rej_obs)}")
+    if not ok:
+        all_checks_passed = False
+
+if all_checks_passed:
+    print("All per-set cross-checks PASSED.")
+else:
+    print("WARNING: Some cross-checks FAILED — inspect output above before trusting results.")
+
+##############################################################################################
+# STEP 4 — COMPUTE RESIDUALS (three sources)
+##############################################################################################
+
+print("\nComputing tudatpy/SPICE residuals...")
+obs_sim_spice = tud_obs_setup.observations_simulation_settings.create_observation_simulators(
     obs_settings_all, system_of_bodies
 )
 tudatpy.estimation.observations.compute_residuals_and_dependent_variables(
-    obs_unfiltered, obs_simulators, system_of_bodies
+    obs_unfiltered, obs_sim_spice, system_of_bodies
 )
+res_concat = np.array(obs_unfiltered.get_concatenated_residuals())
 
-# ---- Per-set times and flat interleaved residuals [ra0,dec0,ra1,dec1,...] in rad ----
-obs_times_per_set = obs_unfiltered.get_observation_times()
-res_concat        = np.array(obs_unfiltered.get_concatenated_residuals())
-
-obs_counts  = [len(obs_times_per_set[j]) for j in range(len(set_ids_all))]
-set_offsets = np.cumsum([0] + obs_counts)
-
-# ---- SPICE (nep097) residuals ----
-print("\nComputing SPICE (nep097) residuals...")
+print("Computing SPICE nep097 residuals...")
 ra_spice_flat, dec_spice_flat = ObsFunc.Get_SPICE_residual_from_observations(
     obs_unfiltered, set_ids_all, system_of_bodies,
     global_frame_orientation=global_frame_orientation
 )
 
-##############################################################################################
-# PLOT: one page per file — RA + Dec, accepted (circles) vs rejected (x)
-##############################################################################################
+print("Computing propagation-based residuals...")
+obs_sim_prop_sims = tud_obs_setup.observations_simulation_settings.create_observation_simulators(
+    obs_settings_prop_all, system_of_bodies_prop
+)
+tudatpy.estimation.observations.compute_residuals_and_dependent_variables(
+    obs_unfiltered_prop, obs_sim_prop_sims, system_of_bodies_prop
+)
+res_concat_prop = np.array(obs_unfiltered_prop.get_concatenated_residuals())
 
-with PdfPages("observation_residuals_all_files.pdf") as pdf:
-    for j, set_id in enumerate(set_ids_all):
-        s, e = set_offsets[j], set_offsets[j + 1]
+# Cross-check residual array lengths
+n_total = set_offsets[-1]
+assert len(res_concat)      == 2 * n_total, \
+    f"res_concat length mismatch: {len(res_concat)} vs {2*n_total}"
+assert len(res_concat_prop) == 2 * n_total, \
+    f"res_concat_prop length mismatch: {len(res_concat_prop)} vs {2*n_total}"
+assert len(ra_spice_flat)   == n_total, \
+    f"ra_spice_flat length mismatch: {len(ra_spice_flat)} vs {n_total}"
+print(f"Residual length cross-check PASSED: {n_total} observations total")
 
-        times_j     = np.array(obs_times_per_set[j])
-        ra_spice_j  = ra_spice_flat[s:e]               # arcsec
-        dec_spice_j = dec_spice_flat[s:e]              # arcsec
-        ra_tud_j    = res_concat[2*s:2*e:2]   / arcsec_to_rad   # rad → arcsec
-        dec_tud_j   = res_concat[2*s+1:2*e:2] / arcsec_to_rad
-
-        times_dt_j  = [j2000_epoch + dt.timedelta(seconds=float(t)) for t in times_j]
-
-        # Rejected mask
-        rejected_set = set(epochs_rej_filtered.get(set_id, []))
-        mask_rej = np.array([float(t) in rejected_set for t in times_j])
-        mask_acc = ~mask_rej
-
-        acc_dt = [times_dt_j[i] for i in np.where(mask_acc)[0]]
-        rej_dt = [times_dt_j[i] for i in np.where(mask_rej)[0]]
-
-        fig, (ax_ra, ax_dec) = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
-        fig.suptitle(f"{set_id}  |  n={e-s}  rejected={mask_rej.sum()}", fontsize=10)
-
-        # --- RA ---
-        ax_ra.scatter(acc_dt, ra_tud_j[mask_acc],   s=6,  color='C0', alpha=0.8, label='tudatpy (accepted)')
-        ax_ra.scatter(acc_dt, ra_spice_j[mask_acc],  s=6,  color='C1', alpha=0.8, label='SPICE nep097 (accepted)')
-        if mask_rej.any():
-            ax_ra.scatter(rej_dt, ra_tud_j[mask_rej],   s=30, color='C0', marker='x', zorder=5, label='tudatpy (rejected)')
-            ax_ra.scatter(rej_dt, ra_spice_j[mask_rej],  s=30, color='C1', marker='x', zorder=5, label='SPICE nep097 (rejected)')
-        ax_ra.axhline(0, color='k', lw=0.5, ls='--')
-        ax_ra.set_ylabel('RA residual [arcsec]')
-        ax_ra.legend(fontsize=7, markerscale=2, ncol=2)
-
-        # --- Dec ---
-        ax_dec.scatter(acc_dt, dec_tud_j[mask_acc],  s=6,  color='C0', alpha=0.8, label='tudatpy (accepted)')
-        ax_dec.scatter(acc_dt, dec_spice_j[mask_acc], s=6,  color='C1', alpha=0.8, label='SPICE nep097 (accepted)')
-        if mask_rej.any():
-            ax_dec.scatter(rej_dt, dec_tud_j[mask_rej],  s=30, color='C0', marker='x', zorder=5, label='tudatpy (rejected)')
-            ax_dec.scatter(rej_dt, dec_spice_j[mask_rej], s=30, color='C1', marker='x', zorder=5, label='SPICE nep097 (rejected)')
-        ax_dec.axhline(0, color='k', lw=0.5, ls='--')
-        ax_dec.set_ylabel('Dec residual [arcsec]')
-        ax_dec.set_xlabel('Date')
-        ax_dec.legend(fontsize=7, markerscale=2, ncol=2)
-
-        ax_dec.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
-        fig.autofmt_xdate()
-        fig.tight_layout()
-        pdf.savefig(fig)
-        plt.close(fig)
-
-print("Saved: observation_residuals_all_files.pdf")
+# Convert all to arcsec (flat arrays, same observation order as set_offsets)
+ra_tud_all   = res_concat[0::2]      / arcsec_to_rad
+dec_tud_all  = res_concat[1::2]      / arcsec_to_rad
+ra_prop_all  = res_concat_prop[0::2] / arcsec_to_rad
+dec_prop_all = res_concat_prop[1::2] / arcsec_to_rad
 
 ##############################################################################################
-# COMBINED PLOT: all files from file_names.json — accepted (blue) vs rejected (red)
+# STEP 4b — BIASED OBSERVATIONS (manual Dec bias per observation ID)
+# apply_dec_bias_to_observations mutates the collection in-place,
+# so we load a fresh unfiltered collection for the biased computation
+# and leave obs_unfiltered completely unchanged.
 ##############################################################################################
 
-all_times_dt  = []
-all_ra_spice  = []
-all_dec_spice = []
-all_mask_rej  = []
+# ── Define biases here ────────────────────────────────────────────────────────
+BIAS_DICT_ARCSEC = {
+    "689_nm0077": -0.2,   # Dec bias [arcsec]
+}
+
+print("\nLoading fresh observations for bias application...")
+obs_for_bias, obs_settings_bias, set_ids_bias, _ = ObsFunc.LoadObservations(
+    settings["obs"]["observations_folder_path"],
+    system_of_bodies,
+    file_names_loaded,
+    Residual_filtering=False, epoch_filter_dict=None
+)
+assert set_ids_bias == set_ids_all, \
+    f"set_ids mismatch for biased load: {set_ids_bias} vs {set_ids_all}"
+
+obs_biased, applied_bias_rad = ObsFunc.apply_dec_bias_to_observations(
+    obs_for_bias,
+    obs_settings_bias,
+    system_of_bodies,
+    BIAS_DICT_ARCSEC
+)
+applied_bias_arcsec = {k: v / arcsec_to_rad for k, v in applied_bias_rad.items()}
+print(f"  Applied biases [arcsec]: {applied_bias_arcsec}")
+
+print("Computing SPICE nep097 residuals for biased observations...")
+ra_spice_biased_flat, dec_spice_biased_flat = ObsFunc.Get_SPICE_residual_from_observations(
+    obs_biased, set_ids_all, system_of_bodies,
+    global_frame_orientation=global_frame_orientation
+)
+assert len(ra_spice_biased_flat) == n_total, \
+    f"ra_spice_biased length mismatch: {len(ra_spice_biased_flat)} vs {n_total}"
+print(f"  Biased residuals cross-check PASSED: {n_total} observations")
+
+##############################################################################################
+# STEP 5 — BUILD COMBINED TIME / MASK ARRAYS
+# Rejection mask derived from rejected_epochs_per_set (obs-collection authority)
+##############################################################################################
+
+all_times_dt = []
+all_mask_rej = []
 
 for j, set_id in enumerate(set_ids_all):
-    s, e = set_offsets[j], set_offsets[j + 1]
-    times_j      = np.array(obs_times_per_set[j])
-    rejected_set = set(epochs_rej_filtered.get(set_id, []))
-    mask_rej_j   = np.array([float(t) in rejected_set for t in times_j])
+    times_j    = np.array(obs_times_unfiltered[j])
+    rej_set_j  = rejected_epochs_per_set[set_id]
+    mask_rej_j = np.array([float(t) in rej_set_j for t in times_j])
     all_times_dt.extend([j2000_epoch + dt.timedelta(seconds=float(t)) for t in times_j])
-    all_ra_spice.extend(ra_spice_flat[s:e])
-    all_dec_spice.extend(dec_spice_flat[s:e])
     all_mask_rej.extend(mask_rej_j)
 
-all_times_dt  = np.array(all_times_dt)
-all_ra_spice  = np.array(all_ra_spice)
-all_dec_spice = np.array(all_dec_spice)
-all_mask_rej  = np.array(all_mask_rej, dtype=bool)
-all_mask_acc  = ~all_mask_rej
+all_times_dt = np.array(all_times_dt)
+all_mask_rej = np.array(all_mask_rej, dtype=bool)
+all_mask_acc = ~all_mask_rej
 
-fig_all, (ax_ra_all, ax_dec_all) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
-fig_all.suptitle(
-    f"All files in file_names.json  |  n={len(all_times_dt)}  rejected={all_mask_rej.sum()}",
+##############################################################################################
+# STEP 6 — FIGURES: separate PDF per observation file
+##############################################################################################
+
+print(f"\nSaving per-file residual PDFs to {out_dir_obs / 'per_file'}...")
+for j, set_id in enumerate(set_ids_all):
+    s, e = set_offsets[j], set_offsets[j + 1]
+
+    times_j    = np.array(obs_times_unfiltered[j])
+    times_dt_j = [j2000_epoch + dt.timedelta(seconds=float(t)) for t in times_j]
+
+    ra_spice_j  = ra_spice_flat[s:e]
+    dec_spice_j = dec_spice_flat[s:e]
+    ra_tud_j    = ra_tud_all[s:e]
+    dec_tud_j   = dec_tud_all[s:e]
+    ra_prop_j   = ra_prop_all[s:e]
+    dec_prop_j  = dec_prop_all[s:e]
+
+    rej_set_j = rejected_epochs_per_set[set_id]
+    mask_rej  = np.array([float(t) in rej_set_j for t in times_j])
+    mask_acc  = ~mask_rej
+
+    acc_dt = [times_dt_j[i] for i in np.where(mask_acc)[0]]
+    rej_dt = [times_dt_j[i] for i in np.where(mask_rej)[0]]
+
+    fig, (ax_ra, ax_dec) = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
+    fig.suptitle(f"{set_id}  |  n={e-s}  rejected={mask_rej.sum()}", fontsize=10)
+
+    ax_ra.scatter(acc_dt, ra_tud_j[mask_acc],   s=6,  color='C0', alpha=0.8, label='tudatpy/SPICE (accepted)')
+    ax_ra.scatter(acc_dt, ra_spice_j[mask_acc],  s=6,  color='C1', alpha=0.8, label='SPICE nep097 (accepted)')
+    ax_ra.scatter(acc_dt, ra_prop_j[mask_acc],   s=6,  color='C2', alpha=0.8, label='Propagated (accepted)')
+    if mask_rej.any():
+        ax_ra.scatter(rej_dt, ra_tud_j[mask_rej],   s=30, color='C0', marker='x', zorder=5, label='tudatpy/SPICE (rej)')
+        ax_ra.scatter(rej_dt, ra_spice_j[mask_rej],  s=30, color='C1', marker='x', zorder=5, label='SPICE nep097 (rej)')
+        ax_ra.scatter(rej_dt, ra_prop_j[mask_rej],   s=30, color='C2', marker='x', zorder=5, label='Propagated (rej)')
+    ax_ra.axhline(0, color='k', lw=0.5, ls='--')
+    ax_ra.set_ylabel('RA residual [arcsec]')
+    ax_ra.legend(fontsize=7, markerscale=2, ncol=3)
+
+    ax_dec.scatter(acc_dt, dec_tud_j[mask_acc],  s=6,  color='C0', alpha=0.8, label='tudatpy/SPICE (accepted)')
+    ax_dec.scatter(acc_dt, dec_spice_j[mask_acc], s=6,  color='C1', alpha=0.8, label='SPICE nep097 (accepted)')
+    ax_dec.scatter(acc_dt, dec_prop_j[mask_acc],  s=6,  color='C2', alpha=0.8, label='Propagated (accepted)')
+    if mask_rej.any():
+        ax_dec.scatter(rej_dt, dec_tud_j[mask_rej],  s=30, color='C0', marker='x', zorder=5, label='tudatpy/SPICE (rej)')
+        ax_dec.scatter(rej_dt, dec_spice_j[mask_rej], s=30, color='C1', marker='x', zorder=5, label='SPICE nep097 (rej)')
+        ax_dec.scatter(rej_dt, dec_prop_j[mask_rej],  s=30, color='C2', marker='x', zorder=5, label='Propagated (rej)')
+    ax_dec.axhline(0, color='k', lw=0.5, ls='--')
+    ax_dec.set_ylabel('Dec residual [arcsec]')
+    ax_dec.set_xlabel('Date')
+    ax_dec.legend(fontsize=7, markerscale=2, ncol=3)
+
+    ax_dec.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+    fig.autofmt_xdate()
+    fig.tight_layout()
+
+    safe_name = set_id.replace('/', '_').replace(' ', '_')
+    fig.savefig(out_dir_obs / "per_file" / f"{safe_name}.pdf")
+    plt.close(fig)
+
+print(f"  Saved {len(set_ids_all)} per-file PDFs")
+
+##############################################################################################
+# COMBINED FIGURE — SPICE nep097 vs Propagated (all files)
+##############################################################################################
+
+fig_comb, (ax_ra_c, ax_dec_c) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+fig_comb.suptitle(
+    f"All files  |  n={n_total}  rejected={all_mask_rej.sum()}  (SPICE nep097 vs Propagated)",
     fontsize=11
 )
 
-ax_ra_all.scatter(all_times_dt[all_mask_acc], all_ra_spice[all_mask_acc],
-                  s=4, color='C0', alpha=0.6, label=f'accepted  (n={all_mask_acc.sum()})')
-ax_ra_all.scatter(all_times_dt[all_mask_rej], all_ra_spice[all_mask_rej],
-                  s=14, color='red', alpha=0.9, zorder=5, label=f'rejected  (n={all_mask_rej.sum()})')
-ax_ra_all.axhline(0, color='k', lw=0.5, ls='--')
-ax_ra_all.set_ylabel('RA residual [arcsec]  (SPICE nep097)')
-ax_ra_all.legend(fontsize=8, markerscale=2)
+ax_ra_c.scatter(all_times_dt[all_mask_acc], ra_spice_flat[all_mask_acc],
+                s=4, color='C0', alpha=0.6, label=f'SPICE nep097 accepted (n={all_mask_acc.sum()})')
+ax_ra_c.scatter(all_times_dt[all_mask_acc], ra_prop_all[all_mask_acc],
+                s=4, color='C2', alpha=0.6, label='Propagated accepted')
+ax_ra_c.scatter(all_times_dt[all_mask_rej], ra_spice_flat[all_mask_rej],
+                s=14, color='C0', alpha=0.9, marker='x', zorder=5,
+                label=f'SPICE nep097 rejected (n={all_mask_rej.sum()})')
+ax_ra_c.scatter(all_times_dt[all_mask_rej], ra_prop_all[all_mask_rej],
+                s=14, color='C2', alpha=0.9, marker='x', zorder=5, label='Propagated rejected')
+ax_ra_c.axhline(0, color='k', lw=0.5, ls='--')
+ax_ra_c.set_ylabel('RA residual [arcsec]')
+ax_ra_c.legend(fontsize=8, markerscale=2, ncol=2)
 
-ax_dec_all.scatter(all_times_dt[all_mask_acc], all_dec_spice[all_mask_acc],
-                   s=4, color='C0', alpha=0.6, label=f'accepted  (n={all_mask_acc.sum()})')
-ax_dec_all.scatter(all_times_dt[all_mask_rej], all_dec_spice[all_mask_rej],
-                   s=14, color='red', alpha=0.9, zorder=5, label=f'rejected  (n={all_mask_rej.sum()})')
-ax_dec_all.axhline(0, color='k', lw=0.5, ls='--')
-ax_dec_all.set_ylabel('Dec residual [arcsec]  (SPICE nep097)')
-ax_dec_all.set_xlabel('Date')
-ax_dec_all.legend(fontsize=8, markerscale=2)
+ax_dec_c.scatter(all_times_dt[all_mask_acc], dec_spice_flat[all_mask_acc],
+                 s=4, color='C0', alpha=0.6, label='SPICE nep097 accepted')
+ax_dec_c.scatter(all_times_dt[all_mask_acc], dec_prop_all[all_mask_acc],
+                 s=4, color='C2', alpha=0.6, label='Propagated accepted')
+ax_dec_c.scatter(all_times_dt[all_mask_rej], dec_spice_flat[all_mask_rej],
+                 s=14, color='C0', alpha=0.9, marker='x', zorder=5, label='SPICE nep097 rejected')
+ax_dec_c.scatter(all_times_dt[all_mask_rej], dec_prop_all[all_mask_rej],
+                 s=14, color='C2', alpha=0.9, marker='x', zorder=5, label='Propagated rejected')
+ax_dec_c.axhline(0, color='k', lw=0.5, ls='--')
+ax_dec_c.set_ylabel('Dec residual [arcsec]')
+ax_dec_c.set_xlabel('Date')
+ax_dec_c.legend(fontsize=8, markerscale=2, ncol=2)
 
-ax_dec_all.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
-fig_all.autofmt_xdate()
-fig_all.tight_layout()
-fig_all.savefig("observation_residuals_combined.pdf")
-plt.close(fig_all)
-print("Saved: observation_residuals_combined.pdf")
+ax_dec_c.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+fig_comb.autofmt_xdate()
+fig_comb.tight_layout()
+fig_comb.savefig(out_dir_obs / "combined_residuals.pdf")
+plt.close(fig_comb)
+print(f"Saved: {out_dir_obs / 'combined_residuals.pdf'}")
 
 ##############################################################################################
-# EXCLUDED FILES: in folder but NOT in file_names.json
+# EXCLUDED FILES (in folder but NOT in file_names.json)
 ##############################################################################################
 
 folder_path      = settings["obs"]["observations_folder_path"]
@@ -432,15 +587,26 @@ all_folder_files = sorted([f for f in os.listdir(folder_path) if f.endswith('.cs
 excluded_files   = [f for f in all_folder_files if f not in file_names_loaded]
 print(f"\nFiles in folder but not in file_names.json: {excluded_files}")
 
+# Initialise as None — populated below only when excluded files exist
+excl_data = None
+
 if excluded_files:
     obs_excl_unfilt, obs_settings_excl, set_ids_excl, _ = ObsFunc.LoadObservations(
         folder_path, system_of_bodies, excluded_files,
         Residual_filtering=False, epoch_filter_dict=None
     )
-    _, _, _, epochs_rej_excl = ObsFunc.LoadObservations(
+    obs_excl_filt, _, _, epochs_rej_excl = ObsFunc.LoadObservations(
         folder_path, system_of_bodies, excluded_files,
         Residual_filtering=True, epoch_filter_dict=None
     )
+
+    # Derive rejection from obs collections (not from the dict)
+    excl_times_unfilt = obs_excl_unfilt.get_observation_times()
+    excl_times_filt   = obs_excl_filt.get_observation_times()
+    rejected_excl_per_set = {
+        sid: set(float(t) for t in excl_times_unfilt[j]) - set(float(t) for t in excl_times_filt[j])
+        for j, sid in enumerate(set_ids_excl)
+    }
 
     obs_sim_excl = tud_obs_setup.observations_simulation_settings.create_observation_simulators(
         obs_settings_excl, system_of_bodies
@@ -449,11 +615,10 @@ if excluded_files:
         obs_excl_unfilt, obs_sim_excl, system_of_bodies
     )
 
-    obs_times_excl  = obs_excl_unfilt.get_observation_times()
-    counts_excl     = [len(obs_times_excl[j]) for j in range(len(set_ids_excl))]
-    offsets_excl    = np.cumsum([0] + counts_excl)
+    counts_excl  = [len(excl_times_unfilt[j]) for j in range(len(set_ids_excl))]
+    offsets_excl = np.cumsum([0] + counts_excl)
 
-    print("\nComputing SPICE (nep097) residuals for excluded files...")
+    print("Computing SPICE nep097 residuals for excluded files...")
     ra_spice_excl, dec_spice_excl = ObsFunc.Get_SPICE_residual_from_observations(
         obs_excl_unfilt, set_ids_excl, system_of_bodies,
         global_frame_orientation=global_frame_orientation
@@ -464,11 +629,11 @@ if excluded_files:
     all_dec_excl      = []
     all_rej_excl      = []
 
-    for j, set_id in enumerate(set_ids_excl):
-        s, e = offsets_excl[j], offsets_excl[j + 1]
-        times_j      = np.array(obs_times_excl[j])
-        rejected_set = set(epochs_rej_excl.get(set_id, []))
-        mask_rej_j   = np.array([float(t) in rejected_set for t in times_j])
+    for j, sid in enumerate(set_ids_excl):
+        s, e       = offsets_excl[j], offsets_excl[j + 1]
+        times_j    = np.array(excl_times_unfilt[j])
+        rej_set_j  = rejected_excl_per_set[sid]
+        mask_rej_j = np.array([float(t) in rej_set_j for t in times_j])
         all_times_excl_dt.extend([j2000_epoch + dt.timedelta(seconds=float(t)) for t in times_j])
         all_ra_excl.extend(ra_spice_excl[s:e])
         all_dec_excl.extend(dec_spice_excl[s:e])
@@ -486,19 +651,18 @@ if excluded_files:
         f"n={len(all_times_excl_dt)}  rejected={all_rej_excl.sum()}",
         fontsize=9
     )
-
     ax_ra_excl.scatter(all_times_excl_dt[all_acc_excl], all_ra_excl[all_acc_excl],
-                       s=6, color='C0', alpha=0.8, label=f'accepted  (n={all_acc_excl.sum()})')
+                       s=6, color='C0', alpha=0.8, label=f'accepted (n={all_acc_excl.sum()})')
     ax_ra_excl.scatter(all_times_excl_dt[all_rej_excl], all_ra_excl[all_rej_excl],
-                       s=20, color='red', alpha=0.9, zorder=5, label=f'rejected  (n={all_rej_excl.sum()})')
+                       s=20, color='red', alpha=0.9, zorder=5, label=f'rejected (n={all_rej_excl.sum()})')
     ax_ra_excl.axhline(0, color='k', lw=0.5, ls='--')
     ax_ra_excl.set_ylabel('RA residual [arcsec]  (SPICE nep097)')
     ax_ra_excl.legend(fontsize=8, markerscale=2)
 
     ax_dec_excl.scatter(all_times_excl_dt[all_acc_excl], all_dec_excl[all_acc_excl],
-                        s=6, color='C0', alpha=0.8, label=f'accepted  (n={all_acc_excl.sum()})')
+                        s=6, color='C0', alpha=0.8, label=f'accepted (n={all_acc_excl.sum()})')
     ax_dec_excl.scatter(all_times_excl_dt[all_rej_excl], all_dec_excl[all_rej_excl],
-                        s=20, color='red', alpha=0.9, zorder=5, label=f'rejected  (n={all_rej_excl.sum()})')
+                        s=20, color='red', alpha=0.9, zorder=5, label=f'rejected (n={all_rej_excl.sum()})')
     ax_dec_excl.axhline(0, color='k', lw=0.5, ls='--')
     ax_dec_excl.set_ylabel('Dec residual [arcsec]  (SPICE nep097)')
     ax_dec_excl.set_xlabel('Date')
@@ -507,6 +671,98 @@ if excluded_files:
     ax_dec_excl.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
     fig_excl.autofmt_xdate()
     fig_excl.tight_layout()
-    fig_excl.savefig("observation_residuals_excluded_files.pdf")
+    fig_excl.savefig(out_dir_obs / "excluded_files_residuals.pdf")
     plt.close(fig_excl)
-    print("Saved: observation_residuals_excluded_files.pdf")
+    print(f"Saved: {out_dir_obs / 'excluded_files_residuals.pdf'}")
+
+    # Store excluded files data for the .npy dict
+    excl_data = {
+        'files':            excluded_files,
+        'set_ids':          set_ids_excl,
+        'set_offsets':      offsets_excl,
+        'times_dt':         all_times_excl_dt,
+        'times_j2000':      np.array([(t - j2000_epoch).total_seconds()
+                                      for t in all_times_excl_dt]),
+        'ra_spice_arcsec':  all_ra_excl,
+        'dec_spice_arcsec': all_dec_excl,
+        'mask_rejected':    all_rej_excl,
+        'mask_accepted':    all_acc_excl,
+    }
+
+##############################################################################################
+# SAVE DATA DICT (.npy) for MatplotlibExport observations template
+##############################################################################################
+
+times_per_set_j2000 = [np.array(obs_times_unfiltered[j]) for j in range(len(set_ids_all))]
+
+# Propagation time coverage (used in MatplotlibExport to mask valid epochs)
+prop_t_min = float(state_history_array_prop[0,  0])
+prop_t_max = float(state_history_array_prop[-1, 0])
+print(f"\nPropagation covers J2000 [{prop_t_min:.0f}, {prop_t_max:.0f}] "
+      f"≈ [{j2000_epoch + dt.timedelta(seconds=prop_t_min):%Y-%m-%d}, "
+      f"{j2000_epoch + dt.timedelta(seconds=prop_t_max):%Y-%m-%d}]")
+
+# Warn if observations fall outside the propagation arc
+times_j2000_all = np.array([(t - j2000_epoch).total_seconds() for t in all_times_dt])
+n_outside = int(np.sum((times_j2000_all < prop_t_min) | (times_j2000_all > prop_t_max)))
+if n_outside:
+    print(f"  WARNING: {n_outside}/{len(times_j2000_all)} observation epochs lie outside "
+          f"the propagation arc — propagation residuals for those will be extrapolated garbage.")
+
+obs_analysis_data = {
+    # Combined (all files, unfiltered observation order matches set_offsets)
+    "times_dt":             all_times_dt,
+    "times_j2000":          times_j2000_all,
+
+    # SPICE nep097 residuals [arcsec]
+    "ra_spice_arcsec":      ra_spice_flat,
+    "dec_spice_arcsec":     dec_spice_flat,
+
+    # Tudatpy (SPICE environment) residuals [arcsec]
+    "ra_tud_spice_arcsec":  ra_tud_all,
+    "dec_tud_spice_arcsec": dec_tud_all,
+
+    # Propagation-based residuals [arcsec]
+    "ra_prop_arcsec":       ra_prop_all,
+    "dec_prop_arcsec":      dec_prop_all,
+
+    # Manual-bias corrected SPICE nep097 residuals [arcsec]
+    "ra_spice_biased_arcsec":   ra_spice_biased_flat,
+    "dec_spice_biased_arcsec":  dec_spice_biased_flat,
+    # Bias definition used (for reference / figure annotation)
+    "bias_dict_arcsec":         BIAS_DICT_ARCSEC,
+    "bias_applied_arcsec":      applied_bias_arcsec,
+
+    # Masks (derived from obs_filtered — obs-collection authority)
+    "mask_rejected":        all_mask_rej,
+    "mask_accepted":        all_mask_acc,
+
+    # Per-set
+    "set_ids":              set_ids_all,
+    "set_offsets":          set_offsets,
+    "times_per_set_j2000":  times_per_set_j2000,
+
+    # Propagation time coverage [J2000 seconds]
+    "prop_epoch_min":       prop_t_min,
+    "prop_epoch_max":       prop_t_max,
+
+    # Propagated trajectory
+    "state_history_array_prop": state_history_array_prop,  # (N,7): col0=epoch [J2000 s]
+
+    # Excluded files (None if no excluded files exist in the folder)
+    "excluded":             excl_data,
+
+    # Settings summary
+    "settings_summary": {
+        "start_epoch":            settings['prop']['start_epoch'],
+        "end_epoch":              settings['prop']['end_epoch'],
+        "initial_epoch":          settings['prop']['initial_epoch'],
+        "fixed_step_size_s":      settings['prop']['fixed_step_size'],
+        "neptune_rotation_model": settings['env']['Neptune_rot_model_type'],
+        "observations_folder":    settings['obs']['observations_folder_path'],
+        "n_files":                len(file_names_loaded),
+    },
+}
+
+np.save(out_dir_obs / "obs_analysis_data.npy", obs_analysis_data)
+print(f"Saved: {out_dir_obs / 'obs_analysis_data.npy'}")

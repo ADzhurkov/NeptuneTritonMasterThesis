@@ -6,27 +6,25 @@ using SimPole starting conditions with manual bias applied.
 DATASET_LABEL = 'WeightAnalysis'  # TODO: set to matching key in DashInteractivePlotFull DATA_FILES
 
 SELECTED_SIMS = [
-    'id_new_1_weights',
-    'id_new_2_weights',
     'id_weights',
+    'id_new_2_weights',
     'tf_weights',
     'tf_weights_no_limit',
-    'hybrid_weights',
-    'hybrid_old_weights',
+    #'hybrid_weights',
+    #'hybrid_old_weights',
     'hybrid_new_id_weights',
     'hybrid_old_new_id_weights',
 ]
 
 SIM_LABELS = [
-    'ID v1',              # id_new_1_weights
-    'ID v2',              # id_new_2_weights
-    'ID',                 # id_weights
-    'TF',                 # tf_weights
-    'TF no cap',          # tf_weights_no_limit
-    'hybrid G',           # hybrid_weights
-    'hybrid A',           # hybrid_old_weights
-    'hybrid G+v2',        # hybrid_new_id_weights
-    'hybrid A+v2',        # hybrid_old_new_id_weights
+    'per file',                     # id_weights
+    'scaled per file',              # id_new_2_weights
+    'per timeframe',                # tf_weights
+    'per timeframe free',           # tf_weights_no_limit
+    #'hybrid geom.',                 # hybrid_weights
+    #'hybrid arith.',                # hybrid_old_weights
+    'scaled hybrid geom.',          # hybrid_new_id_weights
+    'scaled hybrid arith.',         # hybrid_old_new_id_weights
 ]
 
 OUTPUT_DIR = 'ThesisFigures'
@@ -42,9 +40,9 @@ FIGURES_TO_EXPORT = [
         'notes': [
             'Abbreviations:',
             '  ID        per-observation-file RMSE weights',
+            '  ID v2     ID scaled by \u03c3_global/\u03c3_file',
             '  TF        per-timeframe RMSE weights',
-            '  v1 / v2   two scaling variants of ID weights',
-            '  G / A     two hybrid combination variants (G: new ID, A: old ID)',
+            '  G / A     two hybrid combination variants (G: ID v2, A: old ID)',
             '  no cap    no upper limit applied to computed weights',
         ],
     }),
@@ -78,7 +76,6 @@ SINGLE_SIM_TABLES = []
 
 # Human-readable descriptions for the naming-convention LaTeX table.
 SIM_DESCRIPTIONS = {
-    'id_new_1_weights':          r'Per-file RMSE weights, scaled by $\sigma_{\mathrm{global}} / \sigma_{\mathrm{file}}$ (variant 1)',
     'id_new_2_weights':          r'Per-file RMSE weights, scaled by $\sigma_{\mathrm{global}} / \sigma_{\mathrm{file}}$ (variant 2)',
     'id_weights':                r'Per-observation-file RMSE weights ($1/\sigma_{\mathrm{file}}^2$)',
     'tf_weights':                r'Per-timeframe RMSE weights ($1/\sigma_{\mathrm{tf}}^2$)',
@@ -97,7 +94,6 @@ SIM_MARKERS = {sn: 'o' for sn in SELECTED_SIMS}
 SIM_COLORS = {
     'id_weights':              '#332288',  # indigo
     'id_new_2_weights':        '#117733',  # green
-    'id_new_1_weights':        '#44AA99',  # teal
     'tf_weights':              '#88CCEE',  # cyan
     'tf_weights_no_limit':     '#DDCC77',  # sand
     'hybrid_weights':          '#CC6677',  # rose

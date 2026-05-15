@@ -72,21 +72,21 @@ def CASE1_Manual_Bias(settings,out_dir,file_path="",runSim=True):
             'use_weights': False,
             'use_apriori_cov': False,
         },
-        "IAUPole_initial_state": {
-            "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/IAUPole_initial_state",
-            'est_parameters': ['initial_state'],
-            'Neptune_rot_model_type': 'IAU2015',
-            'use_weights': True,
-            'use_apriori_cov': False,
-        },
-        "IAUPole_pole_pos_cov": {
-            "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/IAUPole_pole_pos_cov",
-            'est_parameters': ['initial_state','iau_rotation_model_pole'],
-            'Neptune_rot_model_type': 'IAU2015',
-            'use_weights': True,
-            'use_apriori_cov': True,
-            'pole_pos_cov': True 
-        },
+        # "IAUPole_initial_state": {
+        #     "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/IAUPole_initial_state",
+        #     'est_parameters': ['initial_state'],
+        #     'Neptune_rot_model_type': 'IAU2015',
+        #     'use_weights': True,
+        #     'use_apriori_cov': False,
+        # },
+        # "IAUPole_pole_pos_cov": {
+        #     "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/IAUPole_pole_pos_cov",
+        #     'est_parameters': ['initial_state','iau_rotation_model_pole'],
+        #     'Neptune_rot_model_type': 'IAU2015',
+        #     'use_weights': True,
+        #     'use_apriori_cov': True,
+        #     'pole_pos_cov': True 
+        # },
         "IAUPole_pole_lib_cov": {
             "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/IAUPole_pole_lib_cov",
             'est_parameters': ['initial_state','iau_rotation_model_pole_librations'],
@@ -96,15 +96,15 @@ def CASE1_Manual_Bias(settings,out_dir,file_path="",runSim=True):
             'pole_pos_cov': False, 
             'pole_lib_cov': True,
         },
-        "IAUPole_pole_pos_cov_pole_lib_cov": {
-            "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/IAUPole_pole_pos_cov_pole_lib_cov",
-            'est_parameters': ['initial_state','iau_rotation_model_pole','iau_rotation_model_pole_librations'],
-            'Neptune_rot_model_type': 'IAU2015',
-            'use_weights': True,
-            'use_apriori_cov': True,
-            'a_priori_pole': True, 
-            'pole_lib_cov': True,
-        },
+        # "IAUPole_pole_pos_cov_pole_lib_cov": {
+        #     "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/IAUPole_pole_pos_cov_pole_lib_cov",
+        #     'est_parameters': ['initial_state','iau_rotation_model_pole','iau_rotation_model_pole_librations'],
+        #     'Neptune_rot_model_type': 'IAU2015',
+        #     'use_weights': True,
+        #     'use_apriori_cov': True,
+        #     'a_priori_pole': True, 
+        #     'pole_lib_cov': True,
+        # },
         "SimPole_initial_state_no_weights": {
             "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/SimPole_initial_state_no_weights",
             'est_parameters': ['initial_state'],
@@ -112,21 +112,21 @@ def CASE1_Manual_Bias(settings,out_dir,file_path="",runSim=True):
             'use_weights': False,
             'use_apriori_cov': False,
         },
-        "SimPole_initial_state": {
-            "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/SimPole_initial_state",
-            'est_parameters': ['initial_state'],
-            'Neptune_rot_model_type': 'IAU2015',
-            'use_weights': True,
-            'use_apriori_cov': False,
-        },
-        "SimPole_pole_pos_cov": {
-            "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/SimPole_pole_pos_cov",
-            'est_parameters': ['initial_state','iau_rotation_model_pole'],
-            'Neptune_rot_model_type': 'IAU2015',
-            'use_weights': True,
-            'use_apriori_cov': True,
-            'pole_pos_cov': True 
-        },
+        # "SimPole_initial_state": {
+        #     "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/SimPole_initial_state",
+        #     'est_parameters': ['initial_state'],
+        #     'Neptune_rot_model_type': 'IAU2015',
+        #     'use_weights': True,
+        #     'use_apriori_cov': False,
+        # },
+        # "SimPole_pole_pos_cov": {
+        #     "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/SimPole_pole_pos_cov",
+        #     'est_parameters': ['initial_state','iau_rotation_model_pole'],
+        #     'Neptune_rot_model_type': 'IAU2015',
+        #     'use_weights': True,
+        #     'use_apriori_cov': True,
+        #     'pole_pos_cov': True 
+        # },
         "SimPole_pole_lib_cov": {
             "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/SimPole_pole_lib_cov",
             'est_parameters': ['initial_state','iau_rotation_model_pole_librations'],
@@ -136,15 +136,15 @@ def CASE1_Manual_Bias(settings,out_dir,file_path="",runSim=True):
             'pole_pos_cov': False, 
             'pole_lib_cov': True,
         },
-        "SimPole_pole_pos_cov_pole_lib_cov": {
-            "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/SimPole_pole_pos_cov_pole_lib_cov",
-            'est_parameters': ['initial_state','iau_rotation_model_pole','iau_rotation_model_pole_librations'],
-            'Neptune_rot_model_type': 'IAU2015',
-            'use_weights': True,
-            'use_apriori_cov': True,
-            'a_priori_pole': True, 
-            'pole_lib_cov': True,
-        },
+        # "SimPole_pole_pos_cov_pole_lib_cov": {
+        #     "simulation_path": "Results/EstimationTemplatesTest/CASE1_Manual_Bias/SimPole_pole_pos_cov_pole_lib_cov",
+        #     'est_parameters': ['initial_state','iau_rotation_model_pole','iau_rotation_model_pole_librations'],
+        #     'Neptune_rot_model_type': 'IAU2015',
+        #     'use_weights': True,
+        #     'use_apriori_cov': True,
+        #     'a_priori_pole': True, 
+        #     'pole_lib_cov': True,
+        # },
     }
 
     settings['obs']['use_old_obs_func'] = False #depricated function do not use !!
@@ -182,14 +182,14 @@ def CASE1_Manual_Bias(settings,out_dir,file_path="",runSim=True):
         settings['est']['a_priori_lib'] = False
             
 
-        estimation_output,observations,observations_settings,body_settings,system_of_bodies = ObservationImplementation.main(
-                settings,
-                out_dir_current)
+        # estimation_output,observations,observations_settings,body_settings,system_of_bodies = ObservationImplementation.main(
+        #         settings,
+        #         out_dir_current)
 
 
         #First estimation (initial_state only) without weights is used to generate weights
 
-        #simulation_weights_path = "Results/PoleEstimationRealObservations/UltimateCASE1/SimPole_initial_state_no_weights"
+        out_dir_current = "Results/PoleEstimationRealObservations/UltimateCASE1/SimPole_initial_state_no_weights"
         #-------------------------------------------------------------
         simulation = PostProc.load_npy_files(out_dir_current)
         residuals = simulation['residual_history_arcseconds'][-1]
@@ -226,10 +226,15 @@ def CASE1_Manual_Bias(settings,out_dir,file_path="",runSim=True):
         fig.savefig(out_dir / "ManualBias_SimPole.pdf")
         #-------------------------------------------------------------
 
+        residuals_formated = np.zeros_like(residuals+1)
+        residuals_formated[:, 0] = times_sec[:]  # time
+        residuals_formated[:, 1] = residuals_new[0::2] # ra columns
+        residuals_formated[:, 2] = residuals_new[1::2]  # dec columns
+
         # EXTRACT RESIDUALS FROM INITIAL SIM 
         # AND COMPUTE/ASSIGN WEIGHTS FROM THEM
         observations_SimPole, weights_info_SimPole = ObsFunc.compute_and_assign_weights(
-            residuals=residuals_new,
+            residuals=residuals_formated,
             observations=observations_biased,
             gap_threshold_hours=4.0,
             min_obs_per_frame=1,
@@ -257,12 +262,13 @@ def CASE1_Manual_Bias(settings,out_dir,file_path="",runSim=True):
         settings['est']['a_priori_pole'] = False
         settings['est']['a_priori_lib'] = False
             
-        estimation_output,observations,observations_settings,body_settings,system_of_bodies = ObservationImplementation.main(
-                settings,
-                out_dir_current)
+        # estimation_output,observations,observations_settings,body_settings,system_of_bodies = ObservationImplementation.main(
+        #         settings,
+        #         out_dir_current)
 
         #Extract residuals
         #First estimation (initial_state only) without weights is used to generate weights
+        out_dir_current = VARIANTS['IAUPole_initial_state_no_weights']['simulation_path']
         simulation = PostProc.load_npy_files(out_dir_current)
         residuals = simulation['residual_history_arcseconds'][-1]
         # # Convert RA and DEC columns from arcseconds to radians
@@ -303,10 +309,16 @@ def CASE1_Manual_Bias(settings,out_dir,file_path="",runSim=True):
         fig = ObsFunc.PlotResidualBiased(times_sec,residuals_old,residuals_new)
         fig.savefig(out_dir / "ManualBias_IAUPole.pdf")
         #--------------------------------------------------------------------------
+        residuals_formated = np.zeros_like(residuals+1)
+        residuals_formated[:, 0] = times_sec[:]  # time
+        residuals_formated[:, 1] = residuals_new[0::2] # ra columns
+        residuals_formated[:, 2] = residuals_new[1::2]  # dec columns
+
+
 
         #COMPUTE & ASSIGN WEIGHTS FROM RESIDUALS OF INITIAL SIM
         observations_IAUPole, weights_info_IAUPole = ObsFunc.compute_and_assign_weights(
-            residuals=residuals,
+            residuals=residuals_formated,
             observations=observations_biased,
             gap_threshold_hours=4.0,
             min_obs_per_frame=1,
@@ -750,6 +762,8 @@ def WeightSchemeAnalysis(settings,out_dir,runSim=True,path_file=""):
             settings['est']['est_parameters'] = content['est_parameters']
             settings['est']['a_priori_covariance'] = content.get('use_apriori_cov', True)
             settings['est']['a_priori_lib'] = content.get('pole_lib_cov', True)
+            settings['est']['a_priori_pole'] = content.get('pole_pos_cov', False)
+            
             if content.get('pole_lib_cov', False):
                 settings['est']['a_priori_lib_deg'] = 1
 

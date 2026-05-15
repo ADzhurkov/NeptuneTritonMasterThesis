@@ -33,24 +33,25 @@ import PropFuncs
 import FigUtils
 
 matplotlib.use("PDF")  #tkagg
-def RunSinglePropagation(settings: dict, out_dir):
+def RunSinglePropagation(settings: dict, out_dir, load_kernels=True):
         ##############################################################################################
     # LOAD SPICE KERNELS
     ##############################################################################################
-    kernel_folder = "Kernels/"
-    kernel_paths=[
-        "pck00010.tpc",
-        "gm_de440.tpc",
-        "nep097.bsp",     
-        "nep105.bsp",
-        "naif0012.tls"
-        ]
+    if load_kernels:
+        kernel_folder = "Kernels/"
+        kernel_paths=[
+            "pck00010.tpc",
+            "gm_de440.tpc",
+            "nep097.bsp",
+            "nep105.bsp",
+            "naif0012.tls"
+            ]
 
-    spice.load_standard_kernels()
+        spice.load_standard_kernels()
 
-    # Load your kernels
-    for k in kernel_paths:
-        spice.load_kernel(os.path.join(kernel_folder, k))
+        # Load your kernels
+        for k in kernel_paths:
+            spice.load_kernel(os.path.join(kernel_folder, k))
 
     ##############################################################################################
     # CREATE ENVIRONMENT  
